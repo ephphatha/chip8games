@@ -1,0 +1,165 @@
+﻿###########################################
+#
+#  Classic Snek
+#
+#  An basic interpretation
+#  of the perennial classic, Snake.
+#
+#  This game will likely crash after
+#  collecting ~128 apples as we run out of
+#  stack space for the snake data.
+#
+###########################################
+
+:alias X_POS v0
+:alias Y_POS v1
+:const X_MAX 63
+:const Y_MAX 31
+
+:alias DIRECTION v2
+:const DIR_UP 0
+:const DIR_LEFT 1
+:const DIR_DOWN 2
+:const DIR_RIGHT 3
+
+:alias KEY_UP v3
+:alias KEY_LEFT v4
+:alias KEY_DOWN v5
+:alias KEY_RIGHT v6
+
+:alias SNAKE_HEAD v7
+:alias SNAKE_TAIL v8
+:const STRIDE 2
+
+:alias APPLE_X v9
+:alias APPLE_Y vA
+
+
+# TODO: Currently we only use 256 bytes max for snake data of ~3000 free, we could handle longer snakes with better memory addressing
+:macro increment_offset _offset {
+	_offset += STRIDE # deliberately letting this overflow, the snake can be 128 pixels long at most.
+}
+
+:macro load_snake_data _offset {
+	i := snake_data
+	i += _offset
+	load v1
+}
+
+:macro draw_snake {
+	i := pixel
+	sprite X_POS Y_POS 1
+}
+
+: main
+	i := initial_state
+	load v8
+	clear
+	draw_snake
+	place_apple
+	
+	: game_loop
+	vf := 1 # flag the snake to grow once (either it's a new game or we hit an apple)
+	
+	loop
+		i := snake_data
+		i += SNAKE_HEAD
+		save v1
+		
+		if vf == 0 then erase_tail
+		# else if vf is non-zero then the tail stays while the head moves one space
+		
+		increment_offset SNAKE_HEAD
+		
+		# cap framerate at 20fps
+		loop
+			vf := delay
+			if vf != 0 then
+		again
+		vf := 3
+		delay := vf
+
+		# player movement
+		# determine direction based on held keys (defaulting to the previous direction)
+		if KEY_UP key then DIRECTION := DIR_UP
+		if KEY_LEFT key then DIRECTION := DIR_LEFT
+		if KEY_DOWN key then DIRECTION := DIR_DOWN
+		if KEY_RIGHT key then DIRECTION := DIR_RIGHT
+		
+		# move the head of the snake
+		if DIRECTION == DIR_UP then Y_POS -= 1
+		if DIRECTION == DIR_LEFT then X_POS -= 1
+		if DIRECTION == DIR_DOWN then Y_POS += 1
+		if DIRECTION == DIR_RIGHT then X_POS += 1
+		
+		# TODO: This code means that the snake wraps when leaving the screen area, this could be changed to collide with the edges instead.
+		vf := X_MAX
+		X_POS &= vf
+		vf := Y_MAX
+		Y_POS &= vf
+		
+		draw_snake
+		if vf == 0 then
+	again
+	# if we reach this point in the code then the head of the snake has hit something (collision flag was set from the last draw call)
+	
+	# check if the snake head is at the same position as the apple
+	if X_POS != APPLE_X then jump game_end
+	if Y_POS != APPLE_Y then jump game_end
+	
+	# we must have hit an apple (x/y positions match the apple location)
+	draw_snake # redraw the head of the snake
+	place_apple # generate a new apple
+	jump game_loop #and continue
+	
+	# otherwise we hit the tail of the snake somewhere
+	: game_end
+	vf := 4
+	buzzer := vf
+	vf := key
+	jump main
+
+: erase_tail
+	# load the coordinates of the end of the tail
+	load_snake_data SNAKE_TAIL
+	
+	# move the pointer to the new end of the tail
+	increment_offset SNAKE_TAIL
+	
+	# draw a pixel over the tail, erasing it
+	draw_snake
+	
+	# restore the current head position ready for the rest of the game loop.
+	load_snake_data SNAKE_HEAD
+return
+
+: place_apple
+	# TODO: If the snake behaviour is changed to collide with the screen edges then it would be nice to prevent the apple spawning directly against the edge of the play area
+	APPLE_X := random X_MAX # get a random x value from 0-63
+	APPLE_Y := random Y_MAX # and y value from 0-31
+	
+	i := pixel
+	sprite APPLE_X APPLE_Y 1
+	
+	if vf == 0 then return # no collision means the apple generated in free space and we can return
+	
+	# otherwise we need to find a new location for the apple, restore the cleared pixel and try again
+	sprite APPLE_X APPLE_Y 1
+	jump place_apple
+	# TODO: If we have long snakes this could potentially loop multiple times trying to find a free space to place an apple.
+	#       Maybe shift the generated position until a free space is found? or allow spawning an apple on top of the snake?
+
+
+: initial_state
+	32               # v0 - x position
+	16               # v1 - y position
+	:byte DIR_RIGHT  # v2 - direction
+	:byte OCTO_KEY_W # v3 - key_up
+	:byte OCTO_KEY_A # v4 - key_left
+	:byte OCTO_KEY_S # v5 - key_down
+	:byte OCTO_KEY_D # v6 - key_right
+	 0               # v7 - head_offset
+	 0               # v8 - tail_offset
+: pixel
+	0x80
+: snake_data

@@ -1,0 +1,498 @@
+﻿###########################################
+#
+#  0x800
+#
+# A Chip8 implementation of the 2048 tile
+#  sliding game
+#
+###########################################
+
+:alias DIRECTION v0
+:const DIR_NONE -1
+:const DIR_RIGHT 3
+:const DIR_LEFT 0
+:const DIR_DOWN 1
+:const DIR_UP 2
+
+:alias SPAWNED_TILE_INDEX ve
+:const EMPTY_TILE 0xFF
+:const TRUE 1
+:const FALSE 0
+
+# Gets the two least significant bits from _source and copies them to _dest (leaving source unmodified)
+:macro get_crumb _dest _source {
+	_dest := 0b11
+	_dest &= _source
+}
+
+# Shifts _dest right by two bits.
+:macro shift_crumb _dest _source {
+	# the first two lines of this macro could be replaced by _dest >>= _source if running on a CHIP8 compliant emulator.
+	#  Buggy S-CHIP emulators ignore the rhs when shifting so to be safe we explicitly copy.
+	_dest := _source
+	_dest >>= _dest
+	_dest >>= _dest
+}
+
+# Multiply a value by a _multiplicand and store the result in _dest using an initial value.
+:macro multiply _dest _mult val init {
+	_dest := init
+	loop
+		while _mult != 0
+		_dest += val
+		_mult -= 1
+	again
+}
+
+:macro swap _a _b {
+	:assert "Swapping a register with itself is a useless operation" { _a != _b }
+	:assert "Using the carry register as operand _a in a swap will clobber it with the value from _b" { _a != vf }
+	:assert "Using the carry register as operand _b in a swap will clobber it with the value from _a" { _b != vf }
+	vf := _a
+	_a := _b
+	_b := vf
+}
+
+:macro draw_digit _digit _x _y {
+	i := hex _digit
+	sprite _x _y 5
+}
+
+:macro buzz {
+	vf := 4
+	buzzer := vf
+}
+
+:macro spawn_tile {
+	v2 := 0
+	:alias NUM_EMPTIES v1
+	NUM_EMPTIES := 0
+	
+	loop
+		i := board_data
+		i += v2
+		load v0
+		
+		if v0 != EMPTY_TILE then jump spawn_next
+		
+		# found an empty tile, add the address to the list of empties
+		i := empty_indexes
+		i += NUM_EMPTIES
+		v0 := v2
+		save v0
+		NUM_EMPTIES += 1
+		
+		: spawn_next
+		v2 += 1
+		if v2 != 16 then
+	again
+	
+	# NUM_EMPTIES is now the number of empty tiles and empty_indexes contains the indexes
+	# If there are no empty spaces then the player has lost and needs to start again
+	if NUM_EMPTIES == 0 then jump game_end
+	
+	# if there's only one tile then we can skip picking a random spot
+	if NUM_EMPTIES == 1 then jump single_candidate
+	
+	# Otherwise NUM_EMPTIES is a value from 2 up to a max of 16 (but likely something far less)
+	#  and we need to find a random index in empty_indexes to fill with a new tile
+	
+	# take shortcuts if NUM_EMPTIES is a power of 2
+	if NUM_EMPTIES == 16 then jump rand_16
+
+	if NUM_EMPTIES == 8 then jump rand_8
+
+	if NUM_EMPTIES == 4 then jump rand_4
+
+	if NUM_EMPTIES == 2 then jump rand_2
+	
+	# else NUM_EMPTIES is 3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15
+	# because I can't be bothered thinking about this more, just copy values from the start of the list to fill it up to 16 entries
+	#  this does mean that tiles will be more likely to spawn in row 0 than row 3 and within each row slightly more likely to spawn in col 0 than col 3
+	v2 := 0
+	loop
+		i := empty_indexes
+		i += v2
+		load v0
+		i := empty_indexes
+		i += NUM_EMPTIES
+		save v0
+		
+		v2 += 1
+		NUM_EMPTIES += 1
+		if NUM_EMPTIES != 16 then
+	again
+
+	# we now have 16 choices, so fall through to the rand_16 case
+	: rand_16
+	v0 := random 0b1111
+	jump load_candidate
+
+	: rand_8
+	v0 := random 0b0111
+	jump load_candidate
+
+	: rand_4
+	v0 := random 0b0011
+	jump load_candidate
+
+	: rand_2
+	v0 := random 0b0001
+	jump load_candidate
+
+	: single_candidate
+	# The list of empties only has one choice, so pull the first index
+	v0 := 0
+	
+	: load_candidate
+	i := empty_indexes
+	i += v0
+	load v0
+	SPAWNED_TILE_INDEX := v0
+	
+	# spawn tiles at a value of either 2**0 (~7/8 odds) or 2**1 (~1/8 odds)
+	v0 := 0
+	vf := random 0b111
+	if vf == 0b111 then	v0 := 1
+	
+	i := board_data
+	i += SPAWNED_TILE_INDEX
+	save v0
+}
+
+:macro draw_board { # SWAP: v0-7, vf; UNUSED: v8-e
+	# wait until the specified delay since the last frame was drawn
+	loop
+		vf := delay
+		if vf != 0 then
+	again
+	
+	clear
+	# Loop over board
+	# when a non-empty space is found, draw the current value
+	:alias INDEX v1
+	INDEX := 0
+	loop
+		i := board_data
+		i += INDEX
+		
+		:alias VALUE v0
+		load VALUE
+		
+		if VALUE != EMPTY_TILE then draw_tile
+		
+		INDEX += 1
+		while INDEX != 16
+	again
+	
+	# cap framerate at 20 fps
+	vf := 3
+	delay := vf
+}
+
+:macro get_input {
+	DIRECTION := DIR_NONE
+	
+	loop
+		# Block till a key is pressed, game state only advances when the player makes a valid move
+		vf := key
+
+		if vf == OCTO_KEY_W then DIRECTION := DIR_UP
+
+		if vf == OCTO_KEY_A then DIRECTION := DIR_LEFT
+
+		if vf == OCTO_KEY_S then DIRECTION := DIR_DOWN
+
+		if vf == OCTO_KEY_D then DIRECTION := DIR_RIGHT
+
+		while DIRECTION == DIR_NONE
+		# An invalid key was pressed, trigger the buzzer and wait for a new key press
+		buzz
+	again
+}
+
+############################
+# Main/Game Loop
+############################
+: main
+	# clear board_data
+	v0 := EMPTY_TILE
+	v1 := 0
+	loop
+		i := board_data
+		i += v1
+		save v0
+		v1 += 1
+		if v1 != 16 then
+	again
+	
+	# game_loop
+	loop
+		spawn_tile
+
+		draw_board
+
+		get_input
+
+		move_board
+	again
+	
+	# No free spaces for tiles, restart the game
+	: game_end
+	buzz
+	vf := key
+jump main
+
+: move_board
+	:alias LOOP_COUNTER v4
+	LOOP_COUNTER := 0
+	
+	:const STRIDE 4
+
+	:alias FLAG_DO_REVERSE v5
+	FLAG_DO_REVERSE := FALSE
+	
+	# multiply direction by 2 to use it as an offset into the move direction jump table
+	v0 <<= DIRECTION
+	jump0 move_table
+	
+	# at this point v0 is free to be trampled, it'll be reused as the "leftmost" tile value in the move/collision code
+	:alias TILE_0 v0
+	:alias TILE_1 v1
+	:alias TILE_2 v2
+	:alias TILE_3 v3
+	
+	: move_table
+		jump move_left
+		jump move_down
+		jump move_up
+		# DIR_RIGHT has a value of 3, so jump0 lands at the label move_right
+
+	: move_right
+	FLAG_DO_REVERSE := TRUE
+	: move_left
+	loop
+		i := board_data
+		i += LOOP_COUNTER
+		load v3 # load the current values for TILE_0 to TILE_3
+		
+		if FLAG_DO_REVERSE == TRUE then reverse
+		
+		process_tiles
+		
+		if FLAG_DO_REVERSE == TRUE then reverse
+		
+		i := board_data
+		i += LOOP_COUNTER
+		save v3 # save the new values for TILE_0 to TILE_3
+		
+		LOOP_COUNTER += STRIDE
+		if LOOP_COUNTER != 16 then
+	again
+return
+
+	: move_up
+	FLAG_DO_REVERSE := TRUE
+	: move_down
+	loop
+		:alias LOAD_OFFSET v6
+		LOAD_OFFSET := LOOP_COUNTER
+		
+		i := board_data
+		i += LOAD_OFFSET
+		load v0
+		TILE_3 := v0
+		
+		LOAD_OFFSET += STRIDE
+		i := board_data
+		i += LOAD_OFFSET
+		load v0
+		TILE_2 := v0
+		
+		LOAD_OFFSET += STRIDE
+		i := board_data
+		i += LOAD_OFFSET
+		load v0
+		TILE_1 := v0
+		
+		LOAD_OFFSET += STRIDE
+		i := board_data
+		i += LOAD_OFFSET
+		load v0
+		# TILE_0 := v0
+		
+		if FLAG_DO_REVERSE == TRUE then reverse
+		
+		process_tiles
+		
+		if FLAG_DO_REVERSE == TRUE then reverse
+		
+		i := board_data
+		i += LOAD_OFFSET
+		# v0 := TILE_0
+		save v0
+		
+		LOAD_OFFSET -= STRIDE
+		i := board_data
+		i += LOAD_OFFSET
+		v0 := TILE_1
+		save v0
+		
+		LOAD_OFFSET -= STRIDE
+		i := board_data
+		i += LOAD_OFFSET
+		v0 := TILE_2
+		save v0
+		
+		LOAD_OFFSET -= STRIDE
+		i := board_data
+		i += LOAD_OFFSET
+		v0 := TILE_3
+		save v0
+		
+		LOOP_COUNTER += 1
+		if LOOP_COUNTER != 4 then
+	again
+return
+
+: reverse # ARGS: v0-3; SWAP: vf; UNUSED_SAFE: v4-e
+	swap v0 v3
+	swap v1 v2
+return
+
+: process_tiles # ARGS: v0-3; UNUSED_SAFE: v4-f
+	# v0, v1, v2, v3 contain a collection of tiles that are treated as moving toward v0
+	#  (the caller will map from/to the actual saved order)
+	#:breakpoint process_tiles
+	
+	# move tiles to the leftmost edge
+	if v2 == EMPTY_TILE then slide_onto_v2
+	if v1 == EMPTY_TILE then slide_onto_v1
+	if v0 == EMPTY_TILE then slide_onto_v0
+	
+	# shifted everything to the left, so check for collisions
+	if v0 == EMPTY_TILE then return
+	if v0 != v1 then jump check_v1
+	# collision between v0 and v1
+	v0 += 1
+	slide_onto_v1
+	: check_v1
+	if v1 == EMPTY_TILE then return
+	if v1 != v2 then jump check_v2
+	#collision between v1 and v2
+	v1 += 1
+	slide_onto_v2
+	: check_v2
+	if v2 == EMPTY_TILE then return
+	if v2 != v3 then return
+	# collision between v2 and v3
+	v2 += 1
+	slide_onto_v3
+return
+
+: slide_onto_v0 # ARGS: v0-3; UNUSED: v4-f
+	v0 := v1
+: slide_onto_v1 # ARGS: v1-3; UNUSED: v0, v4-f
+	v1 := v2
+: slide_onto_v2 # ARGS: v2-3; UNUSED: v0-1, v4-f
+	v2 := v3
+: slide_onto_v3 # ARGS: v3; UNUSED: v0-2, v4-f
+	v3 := EMPTY_TILE
+return
+
+: draw_tile # ARGS_SAFE: v0-1; SWAP: v2-7, vf; UNUSED: v8-e
+	# v0/ARG0 = tile value
+	# v1/ARG1 = index of tile to draw (0-15)
+	
+	# Convert the tile value to display value
+	# Our tile value is treated as an exponent for a power of 2 and displayed as a hex digit followed by a count of 0 digits:
+	# 2^value = hex value = displayed digits
+	# 2^+0 = 0x001 = 10
+	# 2^+1 = 0x002 = 20
+	# 2^+2 = 0x004 = 40
+	# 2^+3 = 0x008 = 80
+	# 2^+4 = 0x010 = 11
+	# 2^+5 = 0x020 = 21
+	# 2^+6 = 0x040 = 41
+	# 2^+7 = 0x080 = 81
+	# 2^+8 = 0x100 = 12
+	# 2^+9 = 0x200 = 22
+	# 2^10 = 0x400 = 42
+	# 2^11 = 0x800 = 82
+
+	# get the two least significant bits as these determine our hex digit (1, 2, 4, or 8)
+	get_crumb v3 VALUE
+	
+	# at this point v3 is a value from 0-3 but we want a value of 1, 2, 4, or 8. We can use pow(2, v3) to get the right value
+	v2 := 1
+	loop
+	  while v3 != 0
+		v3 -= 1
+		v2 <<= v2
+	again
+	# v2 is now the appropriate power of 2
+	:alias HEX_DIGIT v2
+	
+	# shifting v0 right twice will give us the number of 0 digits with no further calculation needed
+	:alias ZEROS_DIGIT v3
+	shift_crumb ZEROS_DIGIT VALUE
+	
+	# get the low 2 bits of v1 for the x coordinate
+	get_crumb v5 INDEX
+	
+	# get the high 2 bits of v1 for the y coordinate
+	shift_crumb v6 INDEX
+	
+	# tiles are 11 pixels wide and 7 pixels high, digits are using the default 4x5 font
+	#0123456789A
+	#1#  # ####
+	#2#  # #  #
+	#3#### #  #
+	#4   # #  #
+	#5   # ####
+	#6
+	
+	# Allowing a 1 pixel padding between tiles (below and to the right of each tile), so the x coordinate is 1 + (12 * v5) + 8 and y is 1 + (8 * v6)
+	:alias SPRITE_X v4
+	multiply SPRITE_X v5 12 9
+	
+	:alias SPRITE_Y v5
+	multiply SPRITE_Y v6 8 1
+	
+	if INDEX == SPAWNED_TILE_INDEX then
+	draw_slab
+	
+	draw_digit HEX_DIGIT SPRITE_X SPRITE_Y
+	
+	SPRITE_X += 5
+	draw_digit ZEROS_DIGIT SPRITE_X SPRITE_Y
+	
+return
+
+: draw_slab # ARGS_SAFE: v4-5; SWAP: v6-7, vf; UNUSED: v0-v3, v8-e
+	i := slab
+	v6 := SPRITE_X
+	v6 -= 1
+	v7 := SPRITE_Y
+	v7 -= 1
+	sprite v6 v7 7
+	vf := 7
+	i += vf
+	v6 += 8
+	sprite v6 v7 7
+return
+
+: slab
+  0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF # left half of a tile (7x8 pixels)
+	0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 # right half of a tile (7x4 pixels)
+
+: board_data # This data gets initialised to EMPTY_TILE at runtime
+	0xCC 0x77 0xCC 0x77
+	0xCC 0x77 0xCC 0x77
+	0xCC 0x77 0xCC 0x77
+	0xCC 0x77 0xCC 0x77
+:monitor board_data "%i, %i, %i, %i\n%i, %i, %i, %i\n%i, %i, %i, %i\n%i, %i, %i, %i\n"
+
+: empty_indexes
+  0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+:monitor empty_indexes "%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n"
