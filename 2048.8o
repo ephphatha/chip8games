@@ -168,6 +168,9 @@
 	again
 	
 	clear
+	
+	draw_banner
+	
 	# Loop over board
 	# when a non-empty space is found, draw the current value
 	:alias INDEX v1
@@ -452,12 +455,14 @@ return
 	#5   # ####
 	#6
 	
-	# Allowing a 1 pixel padding between tiles (below and to the right of each tile), so the x coordinate is 1 + (12 * v5) + 8 and y is 1 + (8 * v6)
+	# The game board is centered on the screen, leaving a 2 pixel border around it and an additional 8 pixel gutter on the left and right sides of the screen
+	# x coordinate is 8 + 2 + (11 * v5) + 1 (since we're drawing the numbers only most of the time)
 	:alias SPRITE_X v4
-	multiply SPRITE_X v5 12 9
+	multiply SPRITE_X v5 11 11
 	
+	# y coordinate is 2 + (7 * v6) + 1 (again because drawing the numbers is the common case)
 	:alias SPRITE_Y v5
-	multiply SPRITE_Y v6 8 1
+	multiply SPRITE_Y v6 7 3
 	
 	if INDEX == SPAWNED_TILE_INDEX then
 	draw_slab
@@ -467,6 +472,30 @@ return
 	SPRITE_X += 5
 	draw_digit ZEROS_DIGIT SPRITE_X SPRITE_Y
 	
+return
+
+: draw_banner
+	i := banner
+	v6 := 0
+	v7 := 0
+	: banner
+	sprite v6 v7 8
+	v7 += 8
+	sprite v6 v7 8
+	v7 += 8
+	sprite v6 v7 8
+	v7 += 8
+	sprite v6 v7 8
+	
+	v6 := 56
+	v7 := 0
+	sprite v6 v7 8
+	v7 += 8
+	sprite v6 v7 8
+	v7 += 8
+	sprite v6 v7 8
+	v7 += 8
+	sprite v6 v7 8
 return
 
 : draw_slab # ARGS_SAFE: v4-5; SWAP: v6-7, vf; UNUSED: v0-v3, v8-e
