@@ -8,7 +8,6 @@
 ###########################################
 
 :alias DIRECTION v0
-:const DIR_NONE -1
 :const DIR_RIGHT 3
 :const DIR_LEFT 0
 :const DIR_DOWN 1
@@ -165,7 +164,8 @@
 	save v0
 }
 
-:macro draw_board { # SWAP: v0-7, vf; UNUSED: v8-e
+:macro draw_board { # Clobbers: v0-7, vf, i
+	:assert "This macro is dummy thicc and should be replaced by a callable function if used more than once" { CALLS == 0 }
 	# wait until the specified delay since the last frame was drawn
 	loop
 		vf := delay
@@ -198,7 +198,9 @@
 	delay := vf
 }
 
-:macro get_input {
+:macro get_input { # Out: DIRECTION; Clobbers: vf
+	:assert "This macro is dummy thicc and should be replaced by a callable function if used more than once" { CALLS == 0 }
+	:const DIR_NONE -1
 	DIRECTION := DIR_NONE
 	
 	loop
@@ -366,7 +368,7 @@ return
 	again
 return
 
-: reverse # ARGS: v0-3; SWAP: vf; UNUSED_SAFE: v4-e
+: reverse # In: v0-3; Clobbers: vf
 	swap v0 v3
 	swap v1 v2
 return
@@ -377,7 +379,7 @@ return
 	if _target == 11 then GAME_STATE := VICTORY # 2^11 is 2048
 }
 
-: process_tiles # ARGS: v0-3; UNUSED_SAFE: v4-f
+: process_tiles # In: v0-3
 	# v0, v1, v2, v3 contain a collection of tiles that are treated as moving toward v0
 	#  (the caller will map from/to the actual saved order)
 	#:breakpoint process_tiles
