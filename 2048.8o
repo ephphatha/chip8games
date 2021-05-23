@@ -157,9 +157,8 @@
 	SPAWNED_TILE_INDEX := v0
 
 	# spawn tiles at a value of either 2**0 (~7/8 odds) or 2**1 (~1/8 odds)
-	v0 := 0
-	vf := random 0b111
-	if vf == 0b111 then	v0 := 1
+	v0 := random 0b111
+	if v0 != 1 then v0 := 0
 
 	i := board_data
 	i += SPAWNED_TILE_INDEX
