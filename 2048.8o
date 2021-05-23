@@ -26,10 +26,10 @@
 }
 
 # Shifts _dest right by two bits.
-:macro shift_crumb _dest _source {
+:macro shift_crumb _dest source {
 	# the first two lines of this macro could be replaced by _dest >>= _source if running on a CHIP8 compliant emulator.
 	#  Buggy S-CHIP emulators ignore the rhs when shifting so to be safe we explicitly copy.
-	_dest := _source
+	_dest := source
 	_dest >>= _dest
 	_dest >>= _dest
 }
