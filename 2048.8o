@@ -7,11 +7,21 @@
 #
 ###########################################
 
+# The high bit of the direction is used by move_tiles to determine whether to reverse the order of bytes (so that the
+#  code can be used to resolve each movement direction).
+# 0_ -> tile set was loaded left to right
+# 1_ -> tile set was loaded right to left and needs to be reversed before/after processing
+# The low bit is used to determine if we're loading a row or a column.
+# _0 -> Loading a row
+# _1 -> Loading a column
+
 :alias DIRECTION v0
-:const DIR_RIGHT 3
-:const DIR_LEFT 0
-:const DIR_DOWN 1
-:const DIR_UP 2
+:const FLAG_DIR_REVERSED 0b10
+:const FLAG_DIR_COLUMN   0b01
+:const DIR_RIGHT 0b10 # reversed row
+:const DIR_LEFT  0b00 # normal row
+:const DIR_UP    0b11 #  reversed col
+:const DIR_DOWN  0b01 #  normal col
 
 :alias GAME_STATE vc
 :const VICTORY 1
@@ -262,38 +272,31 @@ jump main
 
 	:const STRIDE 4
 
-	:alias FLAG_DO_REVERSE v5
-	FLAG_DO_REVERSE := FALSE
+	:alias IS_REVERSED v5
+	IS_REVERSED := FLAG_DIR_REVERSED
+	IS_REVERSED &= v0
 
-	# multiply direction by 2 to use it as an offset into the move direction jump table
-	v0 <<= DIRECTION
-	jump0 move_table
+	vf := FLAG_DIR_COLUMN
+	vf &= v0
+	if vf == FLAG_DIR_COLUMN then jump move_column
 
 	# at this point v0 is free to be trampled, it'll be reused as the "leftmost" tile value in the move/collision code
 	:alias TILE_0 v0
 	:alias TILE_1 v1
 	:alias TILE_2 v2
 	:alias TILE_3 v3
-	
-	: move_table
-		jump move_left
-		jump move_down
-		jump move_up
-		# DIR_RIGHT has a value of 3, so jump0 lands at the label move_right
 
-	: move_right
-	FLAG_DO_REVERSE := TRUE
-	: move_left
+	: move_row
 	loop
 		i := board_data
 		i += LOOP_COUNTER
 		load v3 # load the current values for TILE_0 to TILE_3
-		
-		if FLAG_DO_REVERSE == TRUE then reverse
+
+		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
 		
 		process_tiles
 		
-		if FLAG_DO_REVERSE == TRUE then reverse
+		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
 		
 		i := board_data
 		i += LOOP_COUNTER
@@ -304,9 +307,7 @@ jump main
 	again
 return
 
-	: move_up
-	FLAG_DO_REVERSE := TRUE
-	: move_down
+	: move_column
 	loop
 		:alias LOAD_OFFSET v6
 		LOAD_OFFSET := LOOP_COUNTER
@@ -334,11 +335,11 @@ return
 		load v0
 		# TILE_0 := v0
 
-		if FLAG_DO_REVERSE == TRUE then reverse
+		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
 
 		process_tiles
 
-		if FLAG_DO_REVERSE == TRUE then reverse
+		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
 
 		i := board_data
 		i += LOAD_OFFSET
