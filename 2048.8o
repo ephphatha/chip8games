@@ -14,7 +14,7 @@
 :const DIR_DOWN 1
 :const DIR_UP 2
 
-:alias SPAWNED_TILE_INDEX ve
+:alias SPAWNED_TILE_INDEX vd
 :const EMPTY_TILE 0xFF
 :const TRUE 1
 :const FALSE 0
