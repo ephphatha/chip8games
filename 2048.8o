@@ -66,7 +66,10 @@
 	buzzer := vf
 }
 
-:macro spawn_tile {
+:macro spawn_tile { # Out: SPAWNED_TILE_INDEX; Clobbers: v0-2, vf, i
+	:assert "This macro is dummy thicc and should be replaced by a callable function if used more than once" { CALLS == 0 }
+	# This procedure jumps to the end state so to save leaving garbage on the call stack it's been implemented as a macro.
+	# If it ever needs to be converted to a function it would be good to revisit the way the end state is triggered.
 	v2 := 0
 	:alias NUM_EMPTIES v1
 	NUM_EMPTIES := 0
