@@ -465,7 +465,7 @@ return
 	multiply SPRITE_Y v6 7 3
 	
 	if INDEX == SPAWNED_TILE_INDEX then
-	draw_slab
+	draw_tile_background
 	
 	draw_digit HEX_DIGIT SPRITE_X SPRITE_Y
 	
@@ -498,23 +498,24 @@ return
 	sprite v6 v7 8
 return
 
-: draw_slab # ARGS_SAFE: v4-5; SWAP: v6-7, vf; UNUSED: v0-v3, v8-e
-	i := slab
-	v6 := SPRITE_X
-	v6 -= 1
-	v7 := SPRITE_Y
-	v7 -= 1
-	sprite v6 v7 7
-	vf := 7
-	i += vf
-	v6 += 8
-	sprite v6 v7 7
+: draw_tile_background # Clobbers: vf, i
+	i := sprite_block_8
+	SPRITE_X -= 1
+	SPRITE_Y -= 1
+	sprite SPRITE_X SPRITE_Y 7
+	i := sprite_block_3
+	SPRITE_X += 8
+	sprite SPRITE_X SPRITE_Y 7
+	
+	#restore previous values
+	SPRITE_X -= 7
+	SPRITE_Y += 1
 return
 
-: slab
-  0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF # left half of a tile (7x8 pixels)
-	0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 # right half of a tile (7x4 pixels)
-
+: sprite_block_8
+  0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF # a solid block (8x8 pixels)
+: sprite_block_3
+	0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 # a 3 wide block (8x3 pixels)
 : board_data # This data gets initialised to EMPTY_TILE at runtime
 	0xCC 0x77 0xCC 0x77
 	0xCC 0x77 0xCC 0x77
