@@ -14,6 +14,9 @@
 :const DIR_DOWN 1
 :const DIR_UP 2
 
+:alias GAME_STATE vc
+:const VICTORY 1
+
 :alias SPAWNED_TILE_INDEX vd
 :const EMPTY_TILE 0xFF
 :const TRUE 1
@@ -67,36 +70,36 @@
 	v2 := 0
 	:alias NUM_EMPTIES v1
 	NUM_EMPTIES := 0
-	
+
 	loop
 		i := board_data
 		i += v2
 		load v0
-		
+
 		if v0 != EMPTY_TILE then jump spawn_next
-		
+
 		# found an empty tile, add the address to the list of empties
 		i := empty_indexes
 		i += NUM_EMPTIES
 		v0 := v2
 		save v0
 		NUM_EMPTIES += 1
-		
+
 		: spawn_next
 		v2 += 1
 		if v2 != 16 then
 	again
-	
+
 	# NUM_EMPTIES is now the number of empty tiles and empty_indexes contains the indexes
 	# If there are no empty spaces then the player has lost and needs to start again
 	if NUM_EMPTIES == 0 then jump game_end
-	
+
 	# if there's only one tile then we can skip picking a random spot
 	if NUM_EMPTIES == 1 then jump single_candidate
-	
+
 	# Otherwise NUM_EMPTIES is a value from 2 up to a max of 16 (but likely something far less)
 	#  and we need to find a random index in empty_indexes to fill with a new tile
-	
+
 	# take shortcuts if NUM_EMPTIES is a power of 2
 	if NUM_EMPTIES == 16 then jump rand_16
 
@@ -105,7 +108,7 @@
 	if NUM_EMPTIES == 4 then jump rand_4
 
 	if NUM_EMPTIES == 2 then jump rand_2
-	
+
 	# else NUM_EMPTIES is 3, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15
 	# because I can't be bothered thinking about this more, just copy values from the start of the list to fill it up to 16 entries
 	#  this does mean that tiles will be more likely to spawn in row 0 than row 3 and within each row slightly more likely to spawn in col 0 than col 3
@@ -117,7 +120,7 @@
 		i := empty_indexes
 		i += NUM_EMPTIES
 		save v0
-		
+
 		v2 += 1
 		NUM_EMPTIES += 1
 		if NUM_EMPTIES != 16 then
@@ -143,18 +146,18 @@
 	: single_candidate
 	# The list of empties only has one choice, so pull the first index
 	v0 := 0
-	
+
 	: load_candidate
 	i := empty_indexes
 	i += v0
 	load v0
 	SPAWNED_TILE_INDEX := v0
-	
+
 	# spawn tiles at a value of either 2**0 (~7/8 odds) or 2**1 (~1/8 odds)
 	v0 := 0
 	vf := random 0b111
 	if vf == 0b111 then	v0 := 1
-	
+
 	i := board_data
 	i += SPAWNED_TILE_INDEX
 	save v0
@@ -166,11 +169,11 @@
 		vf := delay
 		if vf != 0 then
 	again
-	
+
 	clear
-	
+
 	draw_banner
-	
+
 	# Loop over board
 	# when a non-empty space is found, draw the current value
 	:alias INDEX v1
@@ -178,16 +181,16 @@
 	loop
 		i := board_data
 		i += INDEX
-		
+
 		:alias VALUE v0
 		load VALUE
-		
+
 		if VALUE != EMPTY_TILE then draw_tile
-		
+
 		INDEX += 1
 		while INDEX != 16
 	again
-	
+
 	# cap framerate at 20 fps
 	vf := 3
 	delay := vf
@@ -228,7 +231,9 @@
 		v1 += 1
 		if v1 != 16 then
 	again
-	
+
+	GAME_STATE := 0
+
 	# game_loop
 	loop
 		spawn_tile
@@ -239,9 +244,10 @@
 
 		move_board
 	again
-	
+
 	# No free spaces for tiles, restart the game
 	: game_end
+	if GAME_STATE != VICTORY then draw_lose_banner
 	buzz
 	vf := key
 jump main
@@ -249,16 +255,16 @@ jump main
 : move_board
 	:alias LOOP_COUNTER v4
 	LOOP_COUNTER := 0
-	
+
 	:const STRIDE 4
 
 	:alias FLAG_DO_REVERSE v5
 	FLAG_DO_REVERSE := FALSE
-	
+
 	# multiply direction by 2 to use it as an offset into the move direction jump table
 	v0 <<= DIRECTION
 	jump0 move_table
-	
+
 	# at this point v0 is free to be trampled, it'll be reused as the "leftmost" tile value in the move/collision code
 	:alias TILE_0 v0
 	:alias TILE_1 v1
@@ -300,59 +306,59 @@ return
 	loop
 		:alias LOAD_OFFSET v6
 		LOAD_OFFSET := LOOP_COUNTER
-		
+
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
 		TILE_3 := v0
-		
+
 		LOAD_OFFSET += STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
 		TILE_2 := v0
-		
+
 		LOAD_OFFSET += STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
 		TILE_1 := v0
-		
+
 		LOAD_OFFSET += STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
 		# TILE_0 := v0
-		
+
 		if FLAG_DO_REVERSE == TRUE then reverse
-		
+
 		process_tiles
-		
+
 		if FLAG_DO_REVERSE == TRUE then reverse
-		
+
 		i := board_data
 		i += LOAD_OFFSET
 		# v0 := TILE_0
 		save v0
-		
+
 		LOAD_OFFSET -= STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		v0 := TILE_1
 		save v0
-		
+
 		LOAD_OFFSET -= STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		v0 := TILE_2
 		save v0
-		
+
 		LOAD_OFFSET -= STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		v0 := TILE_3
 		save v0
-		
+
 		LOOP_COUNTER += 1
 		if LOOP_COUNTER != 4 then
 	again
@@ -363,33 +369,39 @@ return
 	swap v1 v2
 return
 
+:macro resolve_collision _target {
+	:assert "Collision resolution is only applicable for registers 0-2" { _target < v3 }
+	_target += 1
+	if _target == 11 then GAME_STATE := VICTORY # 2^11 is 2048
+}
+
 : process_tiles # ARGS: v0-3; UNUSED_SAFE: v4-f
 	# v0, v1, v2, v3 contain a collection of tiles that are treated as moving toward v0
 	#  (the caller will map from/to the actual saved order)
 	#:breakpoint process_tiles
-	
+
 	# move tiles to the leftmost edge
 	if v2 == EMPTY_TILE then slide_onto_v2
 	if v1 == EMPTY_TILE then slide_onto_v1
 	if v0 == EMPTY_TILE then slide_onto_v0
-	
+
 	# shifted everything to the left, so check for collisions
 	if v0 == EMPTY_TILE then return
 	if v0 != v1 then jump check_v1
 	# collision between v0 and v1
-	v0 += 1
+	resolve_collision v0
 	slide_onto_v1
 	: check_v1
 	if v1 == EMPTY_TILE then return
 	if v1 != v2 then jump check_v2
 	#collision between v1 and v2
-	v1 += 1
+	resolve_collision v1
 	slide_onto_v2
 	: check_v2
 	if v2 == EMPTY_TILE then return
 	if v2 != v3 then return
 	# collision between v2 and v3
-	v2 += 1
+	resolve_collision v2
 	slide_onto_v3
 return
 
@@ -406,7 +418,7 @@ return
 : draw_tile # ARGS_SAFE: v0-1; SWAP: v2-7, vf; UNUSED: v8-e
 	# v0/ARG0 = tile value
 	# v1/ARG1 = index of tile to draw (0-15)
-	
+
 	# Convert the tile value to display value
 	# Our tile value is treated as an exponent for a power of 2 and displayed as a hex digit followed by a count of 0 digits:
 	# 2^value = hex value = displayed digits
@@ -425,27 +437,27 @@ return
 
 	# get the two least significant bits as these determine our hex digit (1, 2, 4, or 8)
 	get_crumb v3 VALUE
-	
+
 	# at this point v3 is a value from 0-3 but we want a value of 1, 2, 4, or 8. We can use pow(2, v3) to get the right value
 	v2 := 1
 	loop
-	  while v3 != 0
+		while v3 != 0
 		v3 -= 1
 		v2 <<= v2
 	again
 	# v2 is now the appropriate power of 2
 	:alias HEX_DIGIT v2
-	
+
 	# shifting v0 right twice will give us the number of 0 digits with no further calculation needed
 	:alias ZEROS_DIGIT v3
 	shift_crumb ZEROS_DIGIT VALUE
-	
+
 	# get the low 2 bits of v1 for the x coordinate
 	get_crumb v5 INDEX
-	
+
 	# get the high 2 bits of v1 for the y coordinate
 	shift_crumb v6 INDEX
-	
+
 	# tiles are 11 pixels wide and 7 pixels high, digits are using the default 4x5 font
 	#0123456789A
 	#1#  # ####
@@ -454,48 +466,108 @@ return
 	#4   # #  #
 	#5   # ####
 	#6
-	
+
 	# The game board is centered on the screen, leaving a 2 pixel border around it and an additional 8 pixel gutter on the left and right sides of the screen
 	# x coordinate is 8 + 2 + (11 * v5) + 1 (since we're drawing the numbers only most of the time)
 	:alias SPRITE_X v4
 	multiply SPRITE_X v5 11 11
-	
+
 	# y coordinate is 2 + (7 * v6) + 1 (again because drawing the numbers is the common case)
 	:alias SPRITE_Y v5
 	multiply SPRITE_Y v6 7 3
-	
+
 	if INDEX == SPAWNED_TILE_INDEX then
 	draw_tile_background
-	
+
 	draw_digit HEX_DIGIT SPRITE_X SPRITE_Y
-	
+
 	SPRITE_X += 5
 	draw_digit ZEROS_DIGIT SPRITE_X SPRITE_Y
-	
+
 return
 
-: draw_banner
-	i := banner
-	v6 := 0
-	v7 := 0
-	: banner
-	sprite v6 v7 8
-	v7 += 8
-	sprite v6 v7 8
-	v7 += 8
-	sprite v6 v7 8
-	v7 += 8
-	sprite v6 v7 8
-	
-	v6 := 56
-	v7 := 0
-	sprite v6 v7 8
-	v7 += 8
-	sprite v6 v7 8
-	v7 += 8
-	sprite v6 v7 8
-	v7 += 8
-	sprite v6 v7 8
+: draw_lose_banner
+	v0 := 0
+	i := sprite_letter_g_6
+	vf := 0
+	sprite v0 vf 8
+	i := sprite_letter_a_6
+	vf := 8
+	sprite v0 vf 8
+	i := sprite_letter_m_6
+	vf := 16
+	sprite v0 vf 8
+	i := sprite_letter_e_6
+	vf := 24
+	sprite v0 vf 8
+
+	v0 := 56
+	i := sprite_letter_o_6
+	vf := 0
+	sprite v0 vf 8
+	i := sprite_letter_v_6
+	vf := 8
+	sprite v0 vf 8
+	i := sprite_letter_e_6
+	vf := 16
+	sprite v0 vf 8
+	i := sprite_letter_r_6
+	vf := 24
+	sprite v0 vf 8
+return
+
+: draw_victory_banner
+	i := sprite_numeral_2_6
+	v0 := 0
+	vf := 0
+	sprite vf v0 8
+	vf := 56
+	sprite vf v0 8
+
+	i := sprite_numeral_0_6
+	v0 := 8
+	vf := 0
+	sprite vf v0 8
+	vf := 56
+	sprite vf v0 8
+
+	i := sprite_numeral_4_6
+	v0 := 16
+	vf := 0
+	sprite vf v0 8
+	vf := 56
+	sprite vf v0 8
+
+	i := sprite_numeral_8_6
+	v0 := 24
+	vf := 0
+	sprite vf v0 8
+	vf := 56
+	sprite vf v0 8
+return
+
+: draw_banner # Clobbers: v0, vf, i
+	i := sprite_block_8
+	if GAME_STATE == VICTORY then jump draw_victory_banner
+
+	v0 := 0
+	draw_column
+
+	v0 := 56
+	draw_column
+return
+
+: draw_column # In: v0, i; Clobbers: vf
+	# Draws the first 8 rows of the sprite pointed to by i from the top to the bottom of the screen (so repeated 4 times)
+	#  using v0 as the x-coord
+	vf := 0
+	sprite v0 vf 8
+	vf := 8
+	sprite v0 vf 8
+	vf := 16
+	sprite v0 vf 8
+	vf := 24
+	sprite v0 vf 8
 return
 
 : draw_tile_background # Clobbers: vf, i
@@ -506,16 +578,41 @@ return
 	i := sprite_block_3
 	SPRITE_X += 8
 	sprite SPRITE_X SPRITE_Y 7
-	
+
 	#restore previous values
 	SPRITE_X -= 7
 	SPRITE_Y += 1
 return
 
 : sprite_block_8
-  0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF # a solid block (8x8 pixels)
+	0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF # a solid block (8x8 pixels)
 : sprite_block_3
 	0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 0xE0 # a 3 wide block (8x3 pixels)
+#: sprite_checker_8
+#	0x55 0xAA 0x55 0xAA 0x55 0xAA 0x55 0xAA
+: sprite_numeral_0_6
+	0x00 0x7C 0x7E 0x66 0x66 0x7E 0x3E #0x00
+: sprite_numeral_2_6
+	0x00 0x3C 0x46 0x0C 0x18 0x30 0x7E #0x00
+: sprite_numeral_4_6
+	0x00 0x64 0x66 0x7E 0x3E 0x06 0x06 #0x00
+: sprite_numeral_8_6
+	0x00 0x7C 0x66 0x7E 0x66 0x66 0x3E #0x00
+: sprite_letter_a_6
+	0x00 0x3C 0x66 0x66 0x7E 0x66 0x62 #0x00
+: sprite_letter_e_6
+	0x00 0x3C 0x60 0x78 0x60 0x60 0x3C #0x00
+: sprite_letter_g_6
+	0x00 0x3C 0x72 0x60 0x66 0x72 0x3C #0x00
+: sprite_letter_m_6
+	0x00 0x62 0x76 0x7E 0x6A 0x62 0x62 #0x00
+: sprite_letter_o_6
+	0x00 0x3C 0x76 0x62 0x62 0x76 0x3C #0x00
+: sprite_letter_r_6
+	0x00 0x7C 0x62 0x62 0x7C 0x66 0x62 #0x00
+: sprite_letter_v_6
+	0x00 0x42 0x62 0x66 0x34 0x3C 0x18 0x00
+
 : board_data # This data gets initialised to EMPTY_TILE at runtime
 	0xCC 0x77 0xCC 0x77
 	0xCC 0x77 0xCC 0x77
@@ -524,5 +621,5 @@ return
 :monitor board_data "%i, %i, %i, %i\n%i, %i, %i, %i\n%i, %i, %i, %i\n%i, %i, %i, %i\n"
 
 : empty_indexes
-  0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+	0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
 :monitor empty_indexes "%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n"
