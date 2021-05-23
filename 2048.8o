@@ -44,7 +44,7 @@
 	again
 }
 
-:macro swap _a _b {
+:macro swap _a _b { # Clobbers: vf
 	:assert "Swapping a register with itself is a useless operation" { _a != _b }
 	:assert "Using the carry register as operand _a in a swap will clobber it with the value from _b" { _a != vf }
 	:assert "Using the carry register as operand _b in a swap will clobber it with the value from _a" { _b != vf }
@@ -53,12 +53,12 @@
 	_b := vf
 }
 
-:macro draw_digit _digit _x _y {
+:macro draw_digit _digit _x _y { # Clobbers: vf, i
 	i := hex _digit
 	sprite _x _y 5
 }
 
-:macro buzz {
+:macro buzz { # Clobbers: vf
 	vf := 4
 	buzzer := vf
 }
