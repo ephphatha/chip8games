@@ -473,31 +473,6 @@ return
 	v3 := EMPTY_TILE
 return
 
-: pow_2_table
-	1 2 4 8 # 2**0, 2**1, 2**2, 2**3 - used by the draw_tile routine
-
-# tiles are 11 pixels wide and 7 pixels high, digits are using the default 4x5 font
-# 0123456789A
-# 1#  # ####
-# 2#  # #  #
-# 3#### #  #
-# 4   # #  #
-# 5   # ####
-# 6
-#
-# The game board is centered on the screen, leaving a 2 pixel border around it and an additional 8 pixel gutter on the left and right sides of the screen
-:stringmode tile_coords "0123456789ABCDEF" {
-	# x coordinate is left gutter + left border + (tile width * the low crumb of the index) + a one pixel offset as we're drawing the numbers only most of the time
-	:byte { 8 + 2 + ( 11 * ( VALUE & 0b11 ) ) + 1 }
-	
-	# y coordinate is top border + (tile height * bits 2-3 of the index) + a one pixel offset again because drawing the numbers is the common case
-	:byte { 2 + ( 7 * ( VALUE >> 2 ) ) }
-}
-# store the precalculated x/y coordinate pairs for the top left corner of a tile based on the index.
-# lookups will multiply by 2 given the coordinates take up two bytes
-: tile_coordinates
-	tile_coords "0123456789ABCDEF"
-
 : draw_lose_banner
 	v0 := 0
 	i := sprite_letter_g_6
@@ -611,6 +586,36 @@ return
 : sprite_letter_v_6
 	0x00 0x42 0x62 0x66 0x34 0x3C 0x18 0x00
 
+: pow_2_table
+	1 2 4 8 # 2**0, 2**1, 2**2, 2**3 - used by the draw_tile routine
+
+	# Tiles are 11 pixels wide and 7 pixels high, digits are using the default 4x5 font
+	# 0123456789A
+	# 1#  # ####
+	# 2#  # #  #
+	# 3#### #  #
+	# 4   # #  #
+	# 5   # ####
+	# 6
+	#
+	# The game board is centered on the screen, leaving a 2 pixel border around it and an additional 8 pixel gutter on the left and right sides of the screen
+: tile_coordinates
+	# store the precalculated x/y coordinate pairs for the top left corner of a tile based on the index.
+	# lookups will multiply by 2 given the coordinates take up two bytes
+	0x0B 0x02 0x16 0x02 0x21 0x02 0x2C 0x02
+	0x0B 0x09 0x16 0x09 0x21 0x09 0x2C 0x09
+	0x0B 0x10 0x16 0x10 0x21 0x10 0x2C 0x10
+	0x0B 0x17 0x16 0x17 0x21 0x17 0x2C 0x17
+	# This data was calculated with the following stringmode definition:
+	#:stringmode tile_coords "0123456789ABCDEF" {
+		## x coordinate is left gutter + left border + (tile width * the low crumb of the index) + a one pixel offset as we're drawing the numbers only most of the time
+		#:byte { 8 + 2 + ( 11 * ( VALUE & 0b11 ) ) + 1 }
+
+		## y coordinate is top border + (tile height * bits 2-3 of the index) + a one pixel offset again because drawing the numbers is the common case
+		#:byte { 2 + ( 7 * ( VALUE >> 2 ) ) }
+	#}
+	#tile_coords "0123456789ABCDEF"
+
 : board_data # This data gets initialised to EMPTY_TILE at runtime
 	0xCC 0x77 0xCC 0x77
 	0xCC 0x77 0xCC 0x77
@@ -620,4 +625,3 @@ return
 
 : empty_indexes
 	0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-:monitor empty_indexes "%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n%i\n"
