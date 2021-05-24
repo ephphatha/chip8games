@@ -46,15 +46,6 @@
 	_dest >>= _dest
 }
 
-:macro swap _a _b { # Clobbers: vf
-	:assert "Swapping a register with itself is a useless operation" { _a != _b }
-	:assert "Using the carry register as operand _a in a swap will clobber it with the value from _b" { _a != vf }
-	:assert "Using the carry register as operand _b in a swap will clobber it with the value from _a" { _b != vf }
-	vf := _a
-	_a := _b
-	_b := vf
-}
-
 :macro spawn_tile { # Out: SPAWNED_TILE_INDEX; Clobbers: v0-2, vf, i
 	:assert "This macro is dummy thicc and should be replaced by a callable function if used more than once" { CALLS == 0 }
 	# This procedure jumps to the end state so to save leaving garbage on the call stack it's been implemented as a macro.
@@ -297,42 +288,7 @@
 	again
 }
 
-############################
-# Main/Game Loop
-############################
-: main
-	# clear board_data
-	v0 := EMPTY_TILE
-	v1 := 0
-	loop
-		i := board_data
-		i += v1
-		save v0
-		v1 += 1
-		if v1 != 16 then
-	again
-
-	GAME_STATE := 0
-
-	# game_loop
-	loop
-		spawn_tile
-
-		draw_board
-
-		get_input
-
-		move_board
-	again
-
-	# No free spaces for tiles, restart the game
-	: game_end
-	if GAME_STATE != VICTORY then draw_lose_banner
-	buzz
-	vf := key
-jump main
-
-: move_board # In: DIRECTION; Out: GAME_STATE; Clobbers: v0-v6, vf, i
+:macro move_board { # In: DIRECTION; Out: GAME_STATE; Clobbers: v0-v6, vf, i
 	:alias LOOP_COUNTER v4
 	LOOP_COUNTER := 0
 
@@ -347,7 +303,6 @@ jump main
 	if vf == FLAG_DIR_COLUMN then jump move_column
 
 	: move_row
-	loop
 		i := board_data
 		i += LOOP_COUNTER
 		load v3 # load the current values for TILE_0 to TILE_3
@@ -363,12 +318,10 @@ jump main
 		save v3 # save the new values for TILE_0 to TILE_3
 		
 		LOOP_COUNTER += STRIDE
-		if LOOP_COUNTER != 16 then
-	again
-return
+		if LOOP_COUNTER == 16 then jump game_loop
+	jump move_row
 
 	: move_column
-	loop
 		:alias LOAD_OFFSET v6
 		LOAD_OFFSET := LOOP_COUNTER
 
@@ -423,9 +376,52 @@ return
 		save v0
 
 		LOOP_COUNTER += 1
-		if LOOP_COUNTER != 4 then
+		if LOOP_COUNTER == 4 then jump game_loop
+	jump move_column
+}
+
+############################
+# Main/Game Loop
+############################
+: main
+	# clear board_data
+	v0 := EMPTY_TILE
+	v1 := 0
+	loop
+		i := board_data
+		i += v1
+		save v0
+		v1 += 1
+		if v1 != 16 then
 	again
-return
+
+	GAME_STATE := 0
+
+	: game_loop
+		spawn_tile # spawn_tile will jump to game_end if it can't find a free space
+
+		draw_board
+
+		get_input
+
+		move_board
+	# move_board jumps to game_loop
+
+	# No free spaces for tiles, restart the game
+	: game_end
+	if GAME_STATE != VICTORY then draw_lose_banner
+	buzz
+	vf := key
+jump main
+
+:macro swap _a _b { # Clobbers: vf
+	:assert "Swapping a register with itself is a useless operation" { _a != _b }
+	:assert "Using the carry register as operand _a in a swap will clobber it with the value from _b" { _a != vf }
+	:assert "Using the carry register as operand _b in a swap will clobber it with the value from _a" { _b != vf }
+	vf := _a
+	_a := _b
+	_b := vf
+}
 
 : reverse # In: v0-3; Clobbers: vf
 	swap v0 v3
