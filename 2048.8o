@@ -46,16 +46,6 @@
 	_dest >>= _dest
 }
 
-# Multiply a value by a _multiplicand and store the result in _dest using an initial value.
-:macro multiply _dest _mult val init {
-	_dest := init
-	loop
-		while _mult != 0
-		_dest += val
-		_mult -= 1
-	again
-}
-
 :macro swap _a _b { # Clobbers: vf
 	:assert "Swapping a register with itself is a useless operation" { _a != _b }
 	:assert "Using the carry register as operand _a in a swap will clobber it with the value from _b" { _a != vf }
@@ -63,16 +53,6 @@
 	vf := _a
 	_a := _b
 	_b := vf
-}
-
-:macro draw_digit _digit _x _y { # Clobbers: vf, i
-	i := hex _digit
-	sprite _x _y 5
-}
-
-:macro buzz { # Clobbers: vf
-	vf := 4
-	buzzer := vf
 }
 
 :macro spawn_tile { # Out: SPAWNED_TILE_INDEX; Clobbers: v0-2, vf, i
@@ -174,7 +154,84 @@
 	save v0
 }
 
-:macro draw_board { # Clobbers: v0-7, vf, i
+:macro draw_tile_background _x _y { # Clobbers: vf, i
+	:assert "This macro is dummy thicc and should be replaced by a callable function if used more than once" { CALLS == 0 }
+	:assert "This macro clobbers the carry register, do not use it for input" { ( _x != vf ) & ( _y != vf ) }
+	_x -= 1
+	_y -= 1
+	
+	i := sprite_block_8
+	sprite _x _y 7
+	
+	_x += 8
+	i := sprite_block_3
+	sprite _x _y 7
+
+	#restore previous values
+	_x -= 7
+	_y += 1
+}
+
+:macro draw_digit _digit _x _y { # Clobbers: vf, i
+	i := hex _digit
+	sprite _x _y 5
+}
+
+:macro draw_tile _value _index { # In: SPAWNED_TILE_INDEX, Clobbers: v0-3, vf, i
+	:assert "This macro is dummy thicc and should be replaced by a callable function if used more than once" { CALLS == 0 }
+	:assert "This macro clobbers registers v0-3, use higher registers for input" { ( _value > v3 ) & ( _index > v3 ) }
+	:assert "This macro clobbers the carry register, do not use it for input" { ( _value != vf ) & ( _index != vf ) }
+
+	# Convert the tile value to display value
+	# Our tile value is treated as an exponent for a power of 2 and displayed as a hex digit followed by a count of 0 digits:
+	# 2^value = hex value = displayed digits
+	# 2^+0 = 0x001 = 10
+	# 2^+1 = 0x002 = 20
+	# 2^+2 = 0x004 = 40
+	# 2^+3 = 0x008 = 80
+	# 2^+4 = 0x010 = 11
+	# 2^+5 = 0x020 = 21
+	# 2^+6 = 0x040 = 41
+	# 2^+7 = 0x080 = 81
+	# 2^+8 = 0x100 = 12
+	# 2^+9 = 0x200 = 22
+	# 2^10 = 0x400 = 42
+	# 2^11 = 0x800 = 82
+
+	# get the two least significant bits as these determine our hex digit (1, 2, 4, or 8)
+	get_crumb v0 _value
+
+	# at this point v3 is a value from 0-3 but we want a value of 1, 2, 4, or 8. We can use pow(2, v3) to get the right value
+	i := pow_2_table
+	i += v0
+	load v0
+	:alias HEX_DIGIT v2
+	HEX_DIGIT := v0
+
+	# shifting the value right twice will give us the number of 0 digits with no further calculation needed
+	:alias ZEROS_DIGIT v3
+	shift_crumb ZEROS_DIGIT _value
+
+	# multiply the index by two to use for the coordinate lookup
+	v0 := _index
+	v0 <<= v0
+	
+	i := tile_coordinates
+	i += v0
+	load v1
+	:alias SPRITE_X v0
+	:alias SPRITE_Y v1
+
+	if _index != SPAWNED_TILE_INDEX then jump done_background
+	draw_tile_background SPRITE_X SPRITE_Y	
+	: done_background
+
+	draw_digit HEX_DIGIT SPRITE_X SPRITE_Y
+	SPRITE_X += 5
+	draw_digit ZEROS_DIGIT SPRITE_X SPRITE_Y
+}
+
+:macro draw_board { # Clobbers: v0-4, vf, i
 	:assert "This macro is dummy thicc and should be replaced by a callable function if used more than once" { CALLS == 0 }
 	# wait until the specified delay since the last frame was drawn
 	loop
@@ -188,24 +245,33 @@
 
 	# Loop over board
 	# when a non-empty space is found, draw the current value
-	:alias INDEX v1
+	:alias INDEX v4
 	INDEX := 0
 	loop
 		i := board_data
 		i += INDEX
 
-		:alias VALUE v0
-		load VALUE
+		:alias VALUE v5
+		load v0
+		VALUE := v0
 
-		if VALUE != EMPTY_TILE then draw_tile
+		if VALUE == EMPTY_TILE then jump draw_board_next
+		
+		draw_tile VALUE INDEX
 
+		: draw_board_next
 		INDEX += 1
-		while INDEX != 16
+		if INDEX != 16 then
 	again
 
 	# cap framerate at 20 fps
 	vf := 3
 	delay := vf
+}
+
+:macro buzz { # Clobbers: vf
+	vf := 4
+	buzzer := vf
 }
 
 :macro get_input { # Out: DIRECTION; Clobbers: vf
@@ -266,7 +332,7 @@
 	vf := key
 jump main
 
-: move_board
+: move_board # In: DIRECTION; Out: GAME_STATE; Clobbers: v0-v6, vf, i
 	:alias LOOP_COUNTER v4
 	LOOP_COUNTER := 0
 
@@ -274,17 +340,11 @@ jump main
 
 	:alias IS_REVERSED v5
 	IS_REVERSED := FLAG_DIR_REVERSED
-	IS_REVERSED &= v0
+	IS_REVERSED &= DIRECTION
 
 	vf := FLAG_DIR_COLUMN
-	vf &= v0
+	vf &= DIRECTION
 	if vf == FLAG_DIR_COLUMN then jump move_column
-
-	# at this point v0 is free to be trampled, it'll be reused as the "leftmost" tile value in the move/collision code
-	:alias TILE_0 v0
-	:alias TILE_1 v1
-	:alias TILE_2 v2
-	:alias TILE_3 v3
 
 	: move_row
 	loop
@@ -315,25 +375,24 @@ return
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
-		TILE_3 := v0
+		v3 := v0
 
 		LOAD_OFFSET += STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
-		TILE_2 := v0
+		v2 := v0
 
 		LOAD_OFFSET += STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
-		TILE_1 := v0
+		v1 := v0
 
 		LOAD_OFFSET += STRIDE
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
-		# TILE_0 := v0
 
 		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
 
@@ -343,25 +402,24 @@ return
 
 		i := board_data
 		i += LOAD_OFFSET
-		# v0 := TILE_0
 		save v0
 
 		LOAD_OFFSET -= STRIDE
 		i := board_data
 		i += LOAD_OFFSET
-		v0 := TILE_1
+		v0 := v1
 		save v0
 
 		LOAD_OFFSET -= STRIDE
 		i := board_data
 		i += LOAD_OFFSET
-		v0 := TILE_2
+		v0 := v2
 		save v0
 
 		LOAD_OFFSET -= STRIDE
 		i := board_data
 		i += LOAD_OFFSET
-		v0 := TILE_3
+		v0 := v3
 		save v0
 
 		LOOP_COUNTER += 1
@@ -383,7 +441,6 @@ return
 : process_tiles # In: v0-3
 	# v0, v1, v2, v3 contain a collection of tiles that are treated as moving toward v0
 	#  (the caller will map from/to the actual saved order)
-	#:breakpoint process_tiles
 
 	# move tiles to the leftmost edge
 	if v2 == EMPTY_TILE then slide_onto_v2
@@ -420,76 +477,30 @@ return
 	v3 := EMPTY_TILE
 return
 
-: draw_tile # ARGS_SAFE: v0-1; SWAP: v2-7, vf; UNUSED: v8-e
-	# v0/ARG0 = tile value
-	# v1/ARG1 = index of tile to draw (0-15)
+: pow_2_table
+	1 2 4 8 # 2**0, 2**1, 2**2, 2**3 - used by the draw_tile routine
 
-	# Convert the tile value to display value
-	# Our tile value is treated as an exponent for a power of 2 and displayed as a hex digit followed by a count of 0 digits:
-	# 2^value = hex value = displayed digits
-	# 2^+0 = 0x001 = 10
-	# 2^+1 = 0x002 = 20
-	# 2^+2 = 0x004 = 40
-	# 2^+3 = 0x008 = 80
-	# 2^+4 = 0x010 = 11
-	# 2^+5 = 0x020 = 21
-	# 2^+6 = 0x040 = 41
-	# 2^+7 = 0x080 = 81
-	# 2^+8 = 0x100 = 12
-	# 2^+9 = 0x200 = 22
-	# 2^10 = 0x400 = 42
-	# 2^11 = 0x800 = 82
-
-	# get the two least significant bits as these determine our hex digit (1, 2, 4, or 8)
-	get_crumb v3 VALUE
-
-	# at this point v3 is a value from 0-3 but we want a value of 1, 2, 4, or 8. We can use pow(2, v3) to get the right value
-	v2 := 1
-	loop
-		while v3 != 0
-		v3 -= 1
-		v2 <<= v2
-	again
-	# v2 is now the appropriate power of 2
-	:alias HEX_DIGIT v2
-
-	# shifting v0 right twice will give us the number of 0 digits with no further calculation needed
-	:alias ZEROS_DIGIT v3
-	shift_crumb ZEROS_DIGIT VALUE
-
-	# get the low 2 bits of v1 for the x coordinate
-	get_crumb v5 INDEX
-
-	# get the high 2 bits of v1 for the y coordinate
-	shift_crumb v6 INDEX
-
-	# tiles are 11 pixels wide and 7 pixels high, digits are using the default 4x5 font
-	#0123456789A
-	#1#  # ####
-	#2#  # #  #
-	#3#### #  #
-	#4   # #  #
-	#5   # ####
-	#6
-
-	# The game board is centered on the screen, leaving a 2 pixel border around it and an additional 8 pixel gutter on the left and right sides of the screen
-	# x coordinate is 8 + 2 + (11 * v5) + 1 (since we're drawing the numbers only most of the time)
-	:alias SPRITE_X v4
-	multiply SPRITE_X v5 11 11
-
-	# y coordinate is 2 + (7 * v6) + 1 (again because drawing the numbers is the common case)
-	:alias SPRITE_Y v5
-	multiply SPRITE_Y v6 7 3
-
-	if INDEX == SPAWNED_TILE_INDEX then
-	draw_tile_background
-
-	draw_digit HEX_DIGIT SPRITE_X SPRITE_Y
-
-	SPRITE_X += 5
-	draw_digit ZEROS_DIGIT SPRITE_X SPRITE_Y
-
-return
+# tiles are 11 pixels wide and 7 pixels high, digits are using the default 4x5 font
+# 0123456789A
+# 1#  # ####
+# 2#  # #  #
+# 3#### #  #
+# 4   # #  #
+# 5   # ####
+# 6
+#
+# The game board is centered on the screen, leaving a 2 pixel border around it and an additional 8 pixel gutter on the left and right sides of the screen
+:stringmode tile_coords "0123456789ABCDEF" {
+	# x coordinate is left gutter + left border + (tile width * the low crumb of the index) + a one pixel offset as we're drawing the numbers only most of the time
+	:byte { 8 + 2 + ( 11 * ( VALUE & 0b11 ) ) + 1 }
+	
+	# y coordinate is top border + (tile height * bits 2-3 of the index) + a one pixel offset again because drawing the numbers is the common case
+	:byte { 2 + ( 7 * ( VALUE >> 2 ) ) }
+}
+# store the precalculated x/y coordinate pairs for the top left corner of a tile based on the index.
+# lookups will multiply by 2 given the coordinates take up two bytes
+: tile_coordinates
+	tile_coords "0123456789ABCDEF"
 
 : draw_lose_banner
 	v0 := 0
@@ -573,20 +584,6 @@ return
 	sprite v0 vf 8
 	vf := 24
 	sprite v0 vf 8
-return
-
-: draw_tile_background # Clobbers: vf, i
-	i := sprite_block_8
-	SPRITE_X -= 1
-	SPRITE_Y -= 1
-	sprite SPRITE_X SPRITE_Y 7
-	i := sprite_block_3
-	SPRITE_X += 8
-	sprite SPRITE_X SPRITE_Y 7
-
-	#restore previous values
-	SPRITE_X -= 7
-	SPRITE_Y += 1
 return
 
 : sprite_block_8
