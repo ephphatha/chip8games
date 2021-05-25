@@ -32,13 +32,14 @@
 :const FALSE 0
 
 # Gets the two least significant bits from _source and copies them to _dest (leaving source unmodified)
-:macro get_crumb _dest _source {
+:macro get_crumb _dest _source { # In: _source; Out: _dest
 	_dest := 0b11
 	_dest &= _source
 }
 
 # Shifts _dest right by two bits.
-:macro shift_crumb _dest source {
+:macro shift_crumb _dest source { # In: source; Out: _dest
+	:assert "Cannot shift into the carry register, the result will be clobbered" { _dest != vf }
 	# the first two lines of this macro could be replaced by _dest >>= _source if running on a CHIP8 compliant emulator.
 	#  Buggy S-CHIP emulators ignore the rhs when shifting so to be safe we explicitly copy.
 	_dest := source
@@ -49,7 +50,7 @@
 :macro spawn_tile { # Out: SPAWNED_TILE_INDEX; Clobbers: v0-2, vf, i
 	:assert "This macro is dummy thicc and should be replaced by a callable function if used more than once" { CALLS == 0 }
 	# This procedure jumps to the end state so to save leaving garbage on the call stack it's been implemented as a macro.
-	# If it ever needs to be converted to a function it would be good to revisit the way the end state is triggered.
+	# If it ever needs to be converted to a subroutine it would be good to revisit the way the end state is triggered.
 	v2 := 0
 	:alias NUM_EMPTIES v1
 	NUM_EMPTIES := 0
@@ -334,43 +335,76 @@
 	again
 }
 
-:macro move_board { # In: DIRECTION; Out: GAME_STATE; Clobbers: v0-v6, vf, i
+:macro multiply_by_four _target { # In/Out: _target; Clobbers: vf
+	:assert "Cannot multiply the carry register, the result will be clobbered" { _target != vf }
+	_target <<= _target
+	_target <<= _target
+}
+
+:macro resolve_collision _target {
+	:assert "Collision resolution is only applicable for registers 0-2" { _target < v3 }
+	_target += 1
+	if _target == 11 then GAME_STATE := VICTORY # 2^11 is 2048
+}
+
+:macro process_tiles { # In: v0-3
+	# v0, v1, v2, v3 contain a collection of tiles that are treated as moving toward v0
+	#  (the caller will map from/to the actual saved order)
+
+	# move tiles to the leftmost edge
+	if v2 == EMPTY_TILE then slide_onto_v2
+	if v1 == EMPTY_TILE then slide_onto_v1
+	if v0 == EMPTY_TILE then slide_onto_v0
+
+	# shifted everything to the left, so check for collisions
+	if v0 == EMPTY_TILE then jump done_processing
+	if v0 != v1 then jump check_v1
+	# collision between v0 and v1
+	resolve_collision v0
+	slide_onto_v1
+	: check_v1
+	if v1 == EMPTY_TILE then jump done_processing
+	if v1 != v2 then jump check_v2
+	#collision between v1 and v2
+	resolve_collision v1
+	slide_onto_v2
+	: check_v2
+	if v2 == EMPTY_TILE then jump done_processing
+	if v2 != v3 then jump done_processing
+	# collision between v2 and v3
+	resolve_collision v2
+	slide_onto_v3
+	: done_processing
+}
+
+:macro move_board { # In: DIRECTION; Out: GAME_STATE; Clobbers: v0-v7, vf, i
 	:alias LOOP_COUNTER v4
 	LOOP_COUNTER := 0
-
-	:const STRIDE 4
 
 	:alias IS_REVERSED v5
 	IS_REVERSED := FLAG_DIR_REVERSED
 	IS_REVERSED &= DIRECTION
 
-	vf := FLAG_DIR_COLUMN
-	vf &= DIRECTION
-	if vf == FLAG_DIR_COLUMN then jump move_column
+	:alias IS_COLUMN v6
+	IS_COLUMN := FLAG_DIR_COLUMN
+	IS_COLUMN &= DIRECTION
 
-	: move_row
-		i := board_data
-		i += LOOP_COUNTER
-		load v3 # load the current values for TILE_0 to TILE_3
-
-		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
-		
-		process_tiles
-		
-		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
-		
-		i := board_data
-		i += LOOP_COUNTER
-		save v3 # save the new values for TILE_0 to TILE_3
-		
-		LOOP_COUNTER += STRIDE
-		if LOOP_COUNTER == 16 then jump game_loop
-	jump move_row
-
-	: move_column
-		:alias LOAD_OFFSET v6
+	: move_loop
+		:alias LOAD_OFFSET v7
 		LOAD_OFFSET := LOOP_COUNTER
 
+		if IS_COLUMN == FLAG_DIR_COLUMN then jump load_column
+
+		# load_row
+		multiply_by_four LOAD_OFFSET
+		
+		i := board_data
+		i += LOAD_OFFSET
+		load v3 # load the current values for TILE_0 to TILE_3
+		jump end_load
+		
+		: load_column
+		:const STRIDE 4
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
@@ -392,13 +426,23 @@
 		i := board_data
 		i += LOAD_OFFSET
 		load v0
+		: end_load
 
 		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
-
+		
 		process_tiles
-
+		
 		if IS_REVERSED == FLAG_DIR_REVERSED then reverse
 
+		if IS_COLUMN == FLAG_DIR_COLUMN then jump save_column
+
+		# save_row
+		i := board_data
+		i += LOAD_OFFSET
+		save v3 # save the new values for TILE_0 to TILE_3
+		jump end_save
+
+		: save_column
 		i := board_data
 		i += LOAD_OFFSET
 		save v0
@@ -420,10 +464,11 @@
 		i += LOAD_OFFSET
 		v0 := v3
 		save v0
-
+		: end_save
+		
 		LOOP_COUNTER += 1
-		if LOOP_COUNTER == 4 then jump game_loop
-	jump move_column
+		if LOOP_COUNTER != 4 then jump move_loop
+	jump game_loop
 }
 
 :macro draw_lose_banner { # Clobbers: v0, vf, i
@@ -504,41 +549,6 @@ jump main
 : reverse # In: v0-3; Clobbers: vf
 	swap v0 v3
 	swap v1 v2
-return
-
-:macro resolve_collision _target {
-	:assert "Collision resolution is only applicable for registers 0-2" { _target < v3 }
-	_target += 1
-	if _target == 11 then GAME_STATE := VICTORY # 2^11 is 2048
-}
-
-: process_tiles # In: v0-3
-	# v0, v1, v2, v3 contain a collection of tiles that are treated as moving toward v0
-	#  (the caller will map from/to the actual saved order)
-
-	# move tiles to the leftmost edge
-	if v2 == EMPTY_TILE then slide_onto_v2
-	if v1 == EMPTY_TILE then slide_onto_v1
-	if v0 == EMPTY_TILE then slide_onto_v0
-
-	# shifted everything to the left, so check for collisions
-	if v0 == EMPTY_TILE then return
-	if v0 != v1 then jump check_v1
-	# collision between v0 and v1
-	resolve_collision v0
-	slide_onto_v1
-	: check_v1
-	if v1 == EMPTY_TILE then return
-	if v1 != v2 then jump check_v2
-	#collision between v1 and v2
-	resolve_collision v1
-	slide_onto_v2
-	: check_v2
-	if v2 == EMPTY_TILE then return
-	if v2 != v3 then return
-	# collision between v2 and v3
-	resolve_collision v2
-	slide_onto_v3
 return
 
 : slide_onto_v0 # ARGS: v0-3; UNUSED: v4-f
