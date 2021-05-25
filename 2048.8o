@@ -551,13 +551,14 @@ jump main
 	swap v1 v2
 return
 
-: slide_onto_v0 # ARGS: v0-3; UNUSED: v4-f
+# The following set of labels are intended to be used as subroutines which deliberately fall through, as this simplifies the logic in process_tiles
+: slide_onto_v0 # In: v0-3
 	v0 := v1
-: slide_onto_v1 # ARGS: v1-3; UNUSED: v0, v4-f
+: slide_onto_v1 # In: v1-3
 	v1 := v2
-: slide_onto_v2 # ARGS: v2-3; UNUSED: v0-1, v4-f
+: slide_onto_v2 # In: v2-3
 	v2 := v3
-: slide_onto_v3 # ARGS: v3; UNUSED: v0-2, v4-f
+: slide_onto_v3 # In: v3
 	v3 := EMPTY_TILE
 return
 
