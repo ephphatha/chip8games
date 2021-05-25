@@ -1,6 +1,6 @@
 # Inlining Subroutines
 
-When trying to eek out the last bit of performance it can be useful to remove call/jump instructions, especially if the subroutine/target is only ever reached from one location.
+When trying to eek out the last bit of performance it can be useful to remove call/return/jump instructions, especially if the subroutine/target is only ever reached from one location.
  Conversely, if you're trying to save a few more bytes it could be worthwhile turning even a really simple set of repeated instructions into a subroutine, despite now needing to
  execute call/return instructions as well as the actual work.
 
