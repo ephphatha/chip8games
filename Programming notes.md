@@ -36,4 +36,16 @@ Subroutines with three instructions still result in 40% "wasted" instructions bu
 For subroutines called three or more times, you save two instructions in terms of ROM size by defining a callable routine instead of inlining.
 
 ## Four or more instructions
-At this point the only reason to inline is if the code path is performance critical or you only ever call it from a single location.
+At this point the only reason to inline is if the code path is performance critical or you only ever call it from a single location. The overhead of performing two additional
+ instructions for a callable subroutine is still significant even up to routines 18 instructions long. The chart below shows the overhead involved in a callable subroutine up to
+ 20 instructions in length (not counting the call/return instructions) as a percentage of overall execution time (assuming no branches or conditional skips).
+
+![Graph of 2/(x+2) for x in the range 1 to 20, where x represents the instruction count and y is the overhead involved in call/return instructions as a percentage](Call_Return%20Overhead%20vs.%20Raw%20Instruction%20Count.png)
+
+The impact of executing a call/return into a routine is a reciprical relationship. For a routine of 1 instruction the overhead is 80%, but it drops sharply to 25% at 6
+ instructions and peters out to 10% at 18 instructions.
+
+# Multiplication
+Multiplying by two, four, or 8 is always worth doing as shift instructions (*2 is one left shift, *4 is two, *8 is three). Other values can be faster (due to not needing to loop) and/or more
+ space efficient if the range of operands is known and small. Multiplying by using a lookup table requires at minimum 3 instructions; initialising i, adding the offset (from a register, so
+ another instruction is needed to multiply by a constant), and one more to load the value.
