@@ -1,0 +1,111 @@
+﻿# Test sprite drawing routines - draw a 2-pixel wide line scrolling across the screen (until it wraps), then from the top to the bottom (until it wraps)
+# this program uses the following commands:
+# set I register to address
+# set vX register to constant
+# draw 8 lines of sprite data from address given by register I at position given by registers X, Y
+# set delay register from vX register
+# read delay register
+# conditional skip if vX register equals constant
+# unconditional jump
+# call
+# return
+# add constant to vX register
+
+: main
+	i := col_sprite
+	draw_column
+	i := col_delta
+	vd := 3
+	: wipe_right
+	delay := vd
+	loop
+		vf := delay
+		if vf != 0 then
+	again
+
+	draw_column
+	v0 += 1
+	if v0 != 126 then
+	jump wipe_right
+	i := col_sprite
+	draw_column
+
+	v0 := 0
+	i := row_sprite
+	draw_row
+
+	i := row_delta
+	: wipe_down
+	delay := vd
+	loop
+		vf := delay
+		if vf != 0 then
+	again
+
+	draw_row
+	v0 += 1
+
+	if v0 != 63 then
+	jump wipe_down
+
+	i := row_sprite
+	draw_row
+
+	vf := key
+
+: draw_column
+	v1 := 0
+	sprite v0 v1 8
+	v1 := 8
+	sprite v0 v1 8
+	v1 := 16
+	sprite v0 v1 8
+	v1 := 24
+	sprite v0 v1 8
+	return
+
+: draw_row
+	v1 := 0
+	sprite v1 v0 3
+	v1 := 8
+	sprite v1 v0 3
+	v1 := 16
+	sprite v1 v0 3
+	v1 := 24
+	sprite v1 v0 3
+	v1 := 32
+	sprite v1 v0 3
+	v1 := 40
+	sprite v1 v0 3
+	v1 := 48
+	sprite v1 v0 3
+	v1 := 56
+	sprite v1 v0 3
+	return
+
+: col_sprite
+	0b11000000
+	0b11000000
+	0b11000000
+	0b11000000
+	0b11000000
+	0b11000000
+	0b11000000
+	0b11000000
+
+: col_delta
+	0b10100000
+	0b10100000
+	0b10100000
+	0b10100000
+	0b10100000
+	0b10100000
+	0b10100000
+	0b10100000
+
+: row_sprite
+	0b11111111
+: row_delta
+	0b11111111
+	0b00000000
+	0b11111111
