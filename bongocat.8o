@@ -1,0 +1,191 @@
+﻿###########################################
+#
+#  Bongo Cat
+#
+#  meme
+#
+###########################################
+
+:const FACE_ORIGIN_X 23
+:const FACE_ORIGIN_Y 6
+
+:const LEFT_PAW_X 16
+:const LEFT_PAW_Y 10
+
+:const RIGHT_PAW_X 38
+:const RIGHT_PAW_Y 15
+
+:alias clear_left_threshold vc
+:alias clear_right_threshold vd
+
+:const CLAP_TIME 20
+
+:alias flags ve
+:monitor flags "%b"
+
+:const FLAG_PAW_LEFT 0x1
+:const FLAG_PAW_RIGHT 0x2
+:const FLAG_CLAP_LEFT 0x4
+:const FLAG_CLAP_RIGHT 0x8
+
+:macro draw_sprite LABEL X Y LINES {
+	i := LABEL
+	v0 := X
+	v1 := Y
+	sprite v0 v1 LINES
+}
+
+:macro draw_sprite_offset LABEL X_OFFSET Y_OFFSET LINES {
+	i := LABEL
+	v0 += X_OFFSET
+	v1 += Y_OFFSET
+	sprite v0 v1 LINES
+}
+
+:macro draw_paw X Y {
+	draw_sprite paw_up X Y 6
+}
+
+:macro clear_clap FLAG timer draw_routine {
+		# check if the clap is visible
+		vf := FLAG
+		vf &= flags
+		if vf != 0 begin
+			# check if the timer has expired
+			vf := delay
+			vf =- timer
+			if vf != 0 then draw_routine # and clear it if so
+		end
+}
+
+: main
+	# draw table edge
+	i := line
+	v0 := 0
+	v1 := 12
+	loop
+		sprite v0 v1 2
+		v0 += 8
+		v1 += 2
+	if v0 != 64 then again
+	
+	# draw face
+	draw_sprite face1 FACE_ORIGIN_X FACE_ORIGIN_Y 10
+	draw_sprite_offset face2 +8 -1 13
+	draw_sprite_offset face3 +8 +4 2
+	draw_sprite_offset face4 +4 +2 13
+
+	# draw resting paws
+	draw_paw LEFT_PAW_X LEFT_PAW_Y
+	draw_paw RIGHT_PAW_X RIGHT_PAW_Y
+	
+	# initialise sound buffer
+	i := right_paw_transition
+	audio
+
+	loop
+		# handle keypresses
+		vf := 0xA
+		:next check_left
+		if vf key then toggle_left
+		
+		vf := 0xF
+		:next check_right
+		if vf key then toggle_right
+		
+		clear_clap FLAG_CLAP_LEFT clear_left_threshold draw_left_clap
+		clear_clap FLAG_CLAP_RIGHT clear_right_threshold draw_right_clap
+	again
+
+:macro draw_clap X Y {
+	draw_sprite clap X Y 5
+}
+
+:calc LEFT_CLAP_X { LEFT_PAW_X - 2 }
+:calc LEFT_CLAP_Y { LEFT_PAW_Y + 8 }
+: draw_left_clap
+	vf := FLAG_CLAP_LEFT
+	flags ^= vf
+	draw_clap LEFT_CLAP_X LEFT_CLAP_Y
+jump set_pitch
+
+:calc RIGHT_CLAP_X { RIGHT_PAW_X - 4 }
+:calc RIGHT_CLAP_Y { RIGHT_PAW_Y + 9 }
+: draw_right_clap
+	vf := FLAG_CLAP_RIGHT
+	flags ^= vf
+	draw_clap RIGHT_CLAP_X RIGHT_CLAP_Y
+
+:calc CLAP_MASK { FLAG_CLAP_LEFT | FLAG_CLAP_RIGHT }
+: set_pitch
+	# set the pitch based on what clap sprites are visible
+	v0 := 90
+	v1 := CLAP_MASK
+	v1 &= flags
+	v0 -= v1
+	pitch := v0
+;
+
+:macro invert_key_check label {
+	i := label
+	load v0
+	vf := 0x3F
+	v0 ^= vf
+	i := label
+	save v0
+}
+
+:macro toggle_paw_state check_location FLAG_PAW FLAG_CLAP FLAG_CLAP_ALT draw_routine trigger_time trigger_time_alt {
+	# invert the check so we transition back when the key is released
+	invert_key_check check_location
+	
+	vf := FLAG_PAW
+	flags ^= vf # toggle the paw down flag
+	vf &= flags # then see if we set it (i.e. state transitioned from paw up to paw down)
+	if vf != 0 begin
+		vf := FLAG_CLAP
+		vf &= flags # test if the clap sprite is already being displayed
+		
+		if vf == 0 then draw_routine # clap has been cleared due to timeout, so lets redraw it
+		
+		trigger_time := 0
+		
+		vf := CLAP_TIME
+		v0 := delay # save the current timer value in case we have two claps displaying at once
+		delay := vf # reset the timer so the clap sprite stays visible
+		buzzer := vf
+		
+		vf := FLAG_CLAP_ALT
+		vf &= flags
+		if vf != 0 begin # we have two claps displaying at once
+			v0 -= CLAP_TIME
+			trigger_time_alt -= v0 # update how long left until the other sprite is cleared
+		end
+	end
+}
+
+: toggle_left
+	toggle_paw_state check_left FLAG_PAW_LEFT FLAG_CLAP_LEFT FLAG_CLAP_RIGHT draw_left_clap clear_left_threshold clear_right_threshold
+	
+	draw_sprite left_paw_transition LEFT_PAW_X LEFT_PAW_Y 10
+;
+
+: toggle_right
+	toggle_paw_state check_right FLAG_PAW_RIGHT FLAG_CLAP_RIGHT FLAG_CLAP_LEFT draw_right_clap clear_right_threshold clear_left_threshold
+	
+	draw_sprite right_paw_transition RIGHT_PAW_X RIGHT_PAW_Y 11
+	draw_sprite_offset right_paw_transition_2 -1 +6 3
+;
+
+: line 0xF0 0x0F
+: face1 0x01 0x06 0x18 0x60 0x80 0x00 0x00 0x00 0x08 0x01
+: face2 0xC0 0x20 0x18 0x07 0x00 0x00 0x00 0x00 0x00 0x00 0x80 0xE0 0x04
+: face3 0xC0 0x30
+: face4 0xDC 0x24 0x04 0x04 0x04 0x04 0x04 0x04 0x06 0x06 0x02 0x03 0x03
+
+: paw_up 0x1C 0x22 0x49 0x51 0x44 0x40
+: left_paw_transition 0x1C 0x20 0x4D 0x59 0x54 0x60 0x30 0x4F 0x43 0x3C
+: right_paw_transition 0x1C 0x22 0x49 0x51 0x44 0x00 0x40 0x3C 0x00 0x8C 0x70
+: right_paw_transition_2 0x80 0x80 0x80
+
+: clap 0xC0 0x00 0x20 0x48 0x08
