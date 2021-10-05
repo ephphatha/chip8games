@@ -1,4 +1,4 @@
-﻿###########################################
+###########################################
 #
 #  Bongo Cat
 #
@@ -15,10 +15,9 @@
 :const RIGHT_PAW_X 38
 :const RIGHT_PAW_Y 15
 
-:alias clear_left_threshold vc
-:alias clear_right_threshold vd
-
-:const CLAP_TIME 20
+:alias clear_time_left vc
+:alias clear_time_right vd
+:const CLAP_DURATION 20
 
 :alias flags ve
 :monitor flags "%b"
@@ -46,19 +45,20 @@
 	draw_sprite paw_up X Y 6
 }
 
-:macro clear_clap FLAG timer draw_routine {
-		# check if the clap is visible
+:macro check_timeout FLAG delay_register clear_time draw_routine {
+		# check if the clap sprite is visible
 		vf := FLAG
 		vf &= flags
 		if vf != 0 begin
-			# check if the timer has expired
-			vf := delay
-			vf =- timer
+			# visible, see if the timer is at the clear threshold
+			vf := delay_register
+			vf =- clear_time
 			if vf != 0 then draw_routine # and clear it if so
 		end
 }
 
 : main
+
 	# draw table edge
 	i := line
 	v0 := 0
@@ -69,21 +69,16 @@
 		v1 += 2
 	if v0 != 64 then again
 	
-	# draw face
+	# draw face and resting paws
 	draw_sprite face1 FACE_ORIGIN_X FACE_ORIGIN_Y 10
 	draw_sprite_offset face2 +8 -1 13
 	draw_sprite_offset face3 +8 +4 2
 	draw_sprite_offset face4 +4 +2 13
 
-	# draw resting paws
 	draw_paw LEFT_PAW_X LEFT_PAW_Y
 	draw_paw RIGHT_PAW_X RIGHT_PAW_Y
-	
-	# initialise sound buffer
-	i := right_paw_transition
-	audio
 
-	loop
+	: repeat
 		# handle keypresses
 		vf := 0xA
 		:next check_left
@@ -93,9 +88,10 @@
 		:next check_right
 		if vf key then toggle_right
 		
-		clear_clap FLAG_CLAP_LEFT clear_left_threshold draw_left_clap
-		clear_clap FLAG_CLAP_RIGHT clear_right_threshold draw_right_clap
-	again
+		vb := delay # just in case the delay timer counts down mid instruction? probably overly safe
+		check_timeout FLAG_CLAP_LEFT vb clear_time_left draw_left_clap
+		check_timeout FLAG_CLAP_RIGHT vb clear_time_right draw_right_clap
+	jump repeat
 
 :macro draw_clap X Y {
 	draw_sprite clap X Y 5
@@ -107,7 +103,7 @@
 	vf := FLAG_CLAP_LEFT
 	flags ^= vf
 	draw_clap LEFT_CLAP_X LEFT_CLAP_Y
-jump set_pitch
+;
 
 :calc RIGHT_CLAP_X { RIGHT_PAW_X - 4 }
 :calc RIGHT_CLAP_Y { RIGHT_PAW_Y + 9 }
@@ -115,15 +111,6 @@ jump set_pitch
 	vf := FLAG_CLAP_RIGHT
 	flags ^= vf
 	draw_clap RIGHT_CLAP_X RIGHT_CLAP_Y
-
-:calc CLAP_MASK { FLAG_CLAP_LEFT | FLAG_CLAP_RIGHT }
-: set_pitch
-	# set the pitch based on what clap sprites are visible
-	v0 := 90
-	v1 := CLAP_MASK
-	v1 &= flags
-	v0 -= v1
-	pitch := v0
 ;
 
 :macro invert_key_check label {
@@ -135,7 +122,7 @@ jump set_pitch
 	save v0
 }
 
-:macro toggle_paw_state check_location FLAG_PAW FLAG_CLAP FLAG_CLAP_ALT draw_routine trigger_time trigger_time_alt {
+:macro toggle_paw_state check_location FLAG_PAW FLAG_CLAP draw_routine clear_time clear_time_other {
 	# invert the check so we transition back when the key is released
 	invert_key_check check_location
 	
@@ -148,30 +135,25 @@ jump set_pitch
 		
 		if vf == 0 then draw_routine # clap has been cleared due to timeout, so lets redraw it
 		
-		trigger_time := 0
+		# add the elapsed time since last clap to the other sprites clear threshold so it disappears at the expected time
+		vf := CLAP_DURATION
+		v0 := delay
+		delay := vf # also reset the timer so the clap sprite stays visible
+		v0 =- vf
+		clear_time_other += v0
 		
-		vf := CLAP_TIME
-		v0 := delay # save the current timer value in case we have two claps displaying at once
-		delay := vf # reset the timer so the clap sprite stays visible
-		buzzer := vf
-		
-		vf := FLAG_CLAP_ALT
-		vf &= flags
-		if vf != 0 begin # we have two claps displaying at once
-			v0 -= CLAP_TIME
-			trigger_time_alt -= v0 # update how long left until the other sprite is cleared
-		end
+		clear_time := 0
 	end
 }
 
 : toggle_left
-	toggle_paw_state check_left FLAG_PAW_LEFT FLAG_CLAP_LEFT FLAG_CLAP_RIGHT draw_left_clap clear_left_threshold clear_right_threshold
+	toggle_paw_state check_left FLAG_PAW_LEFT FLAG_CLAP_LEFT draw_left_clap clear_time_left clear_time_right
 	
 	draw_sprite left_paw_transition LEFT_PAW_X LEFT_PAW_Y 10
 ;
 
 : toggle_right
-	toggle_paw_state check_right FLAG_PAW_RIGHT FLAG_CLAP_RIGHT FLAG_CLAP_LEFT draw_right_clap clear_right_threshold clear_left_threshold
+	toggle_paw_state check_right FLAG_PAW_RIGHT FLAG_CLAP_RIGHT draw_right_clap clear_time_right clear_time_left
 	
 	draw_sprite right_paw_transition RIGHT_PAW_X RIGHT_PAW_Y 11
 	draw_sprite_offset right_paw_transition_2 -1 +6 3
