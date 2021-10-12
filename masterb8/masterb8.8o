@@ -21,46 +21,31 @@
 :const PLAYFIELD_X_MIN 8
 :const PLAYFIELD_X_MAX 114
 :const PLAYFIELD_Y_MIN 8
-:const PLAYFIELD_Y_MAX 60
+:const PLAYFIELD_Y_MAX 57
 
 :const TICK_DURATION 3
 :const TIMER_POSITION 68
 
+:const HOOK_POSITION 60 # 8 pixel wide sprite drawn centered
+
 : main
   hires
-  draw_play_field
-
-  : restart
-  spawn_player
-  reset_timer
-
-  : game_loop
-    vf := delay
-    if vf != 0 then jump game_loop
-    vf := TICK_DURATION
-    delay := vf
-
-    v0 := TICK_DURATION
-    update_timer
-
-    if timer_seconds == 0 then jump time_out
-
-    handle_player_move
-  jump game_loop
-
-  : time_out
-  draw_player
-  vf := key
-  draw_timer
-  jump restart
-
-: draw_play_field
-  plane 2
-  i := fill
-  v0 := 64 # fill from the bottom of the screen
+  
+#: draw_play_field
+  plane 3
+	i := seaweed # unrolling the seaweed from the loop to minise instructions executed while drawing the playfield, this has a visible impact on slow emulator speeds.
+  v0 := 48 # fill from the bottom of the screen
+	v1 := 128 # fill from the right side of the screen (this gives a more pleasing fill imo)
+	loop
+	  v1 -= 16
+	  sprite v1 v0 0
+	if v1 != 0 then again
+	
+	plane 2
+	i := fill
   loop
     v0 -= 16
-    v1 := 128 # fill from the right side of the screen
+    v1 := 128
     loop
       v1 -= 16
       sprite v1 v0 0
@@ -86,39 +71,110 @@
   if v1 != 132 then again
 
   wave_counter := 2
-  plane 3
-  i := hook
-  v1 := 60
-  sprite v1 wave_counter 12
-return
+#return
 
-: spawn_player
-  # spawn the player somewhere in the range {[28, 92), [20, 52)}
+: restart
+#: spawn_player
+  # spawn the player somewhere in the range {[30, 94), [16, 48)}
   player_x := random 0b111111
-  player_x += 28
+  player_x += 30
   player_y := random 0b11111
-  player_y += 20
+  player_y += 16
 
   player_facing := random 0b1
   draw_player
-return
+#return
 
-: reset_timer
+#: init_timer
   timer_ticks := 0
   timer_seconds := 30
   i := timer_digits
   bcd timer_seconds
   draw_timer
-return
+#return
 
-: draw_player
-  plane 3
-  i := fish_left
-  if player_facing == 1 then i := fish_right
-  sprite player_x player_y 4
-return
 
-: update_timer
+: game_loop
+	vf := delay
+	if vf != 0 then jump game_loop
+	vf := TICK_DURATION
+	delay := vf
+
+	v0 := TICK_DURATION
+	update_timer
+
+	if timer_seconds == 0 then jump time_out
+
+#: handle_input
+  v0 := 0 # delta_x
+  v1 := 0 # delta_y
+  vf := OCTO_KEY_W
+  if vf key then v1 -= 1
+  vf := OCTO_KEY_S
+  if vf key then v1 += 1
+  vf := OCTO_KEY_A
+  if vf key then v0 -= 1
+  vf := OCTO_KEY_D
+  if vf key then v0 += 1
+#return
+
+#: update_player
+  vf := v0
+  vf |= v1
+
+  if vf != 0 begin # player is moving
+		if v0 == 1 begin
+			if player_x == PLAYFIELD_X_MAX then v0 := 0
+		end
+
+		if v0 == -1 begin
+			if player_x == PLAYFIELD_X_MIN then v0 := 0
+		end
+
+		if v1 == 1 begin
+			if player_y == PLAYFIELD_Y_MAX then v1 := 0
+		end
+
+		if v1 == -1 begin
+			if player_y == PLAYFIELD_Y_MIN then v1 := 0
+		end
+
+		draw_player # clear the sprite before updating the position
+
+		if v0 != 0 then player_facing := v0
+
+		player_x += v0
+		player_y += v1
+		draw_player
+	end
+#return
+
+#: update_world
+  #if toggle_hook then draw_hook
+#return
+
+	#if player_dead == 1 then jump dead_dead
+jump game_loop
+
+##############
+# End States #
+##############
+: time_out
+  draw_player
+  vf := key #leave the time visible to give the player feedback why the game ended
+  draw_timer
+  jump restart
+	
+: dead_dead
+	draw_player
+	draw_timer
+	vf := key #hide the timer, not relevant in this death state
+	jump restart
+
+############
+# Routines #
+############
+: update_timer # uses v0 as the time elapsed
   timer_ticks += v0
   if timer_ticks >= 60 begin
     timer_ticks -= 60
@@ -144,50 +200,23 @@ return
   sprite v0 v1 5
 return
 
-: handle_player_move
-  v0 := 0 # delta_x
-  v1 := 0 # delta_y
-  vf := OCTO_KEY_W
-  if vf key then v1 -= 1
-  vf := OCTO_KEY_S
-  if vf key then v1 += 1
-  vf := OCTO_KEY_A
-  if vf key then v0 -= 1
-  vf := OCTO_KEY_D
-  if vf key then v0 += 1
-
-  vf := v0
-  vf |= v1
-
-  if vf == 0 then return # not moving, no need to redraw
-
-  # else player is moving
-
-  if v0 == 1 begin
-    if player_x == PLAYFIELD_X_MAX then v0 := 0
-  end
-
-  if v0 == -1 begin
-    if player_x == PLAYFIELD_X_MIN then v0 := 0
-  end
-
-  if v1 == 1 begin
-    if player_y == PLAYFIELD_Y_MAX then v1 := 0
-  end
-
-  if v1 == -1 begin
-    if player_y == PLAYFIELD_Y_MIN then v1 := 0
-  end
-
-  draw_player # clear the sprite before updating the position
-
-  if v0 != 0 then player_facing := v0
-
-  player_x += v0
-  player_y += v1
-  draw_player
+: draw_player
+  plane 3
+  i := fish_left
+  if player_facing == 1 then i := fish_right
+  sprite player_x player_y 4
 return
 
+: draw_hook
+  plane 3
+  i := hook
+  v1 := HOOK_POSITION
+  sprite v1 wave_counter 12
+return
+
+###########
+# Sprites #
+###########
 : fish_right
 0x00 0x08 0x00 0x00
 0xB8 0xF4 0xFC 0xB8
@@ -219,6 +248,18 @@ return
 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
 : wave3
 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0x81
+: seaweed
+0x00 0x00 0x00 0x80 0x40 0x04 0x08 0x00
+0x02 0x20 0x00 0x00 0x01 0x00 0x10 0x01
+0x40 0x12 0x00 0x00 0x20 0x00 0x00 0x20
+0x02 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+0xFF 0x7F 0xDF 0xF9 0xFB 0x2D 0xB3 0xAD
+0xDB 0xCE 0xDD 0x9E 0xEC 0xDA 0x4D 0x9B
+0x4D 0x59 0xAE 0xD9 0x9E 0xCD 0xAD 0xCD
+0xA8 0xDC 0x89 0x09 0x00 0x00 0x00 0x00
 
+########
+# Data #
+########
 : timer_digits
 0x00 0x00 0x00
