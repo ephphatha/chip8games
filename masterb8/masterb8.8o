@@ -1,0 +1,224 @@
+###########################################
+#
+#  Master B8
+#
+# Use your newly developed mind control
+# device to catch fish. With the limited
+# control time available eat smaller fish,
+# making the largest possible catch.
+#
+###########################################
+
+:alias player_x vd
+:alias player_y vc
+:alias player_weight vb
+:alias player_facing va
+
+:alias timer_ticks v9
+:alias timer_seconds v8
+:alias wave_counter v7
+
+:const PLAYFIELD_X_MIN 8
+:const PLAYFIELD_X_MAX 114
+:const PLAYFIELD_Y_MIN 8
+:const PLAYFIELD_Y_MAX 60
+
+:const TICK_DURATION 3
+:const TIMER_POSITION 68
+
+: main
+  hires
+  draw_play_field
+
+  : restart
+  spawn_player
+  reset_timer
+
+  : game_loop
+    vf := delay
+    if vf != 0 then jump game_loop
+    vf := TICK_DURATION
+    delay := vf
+
+    v0 := TICK_DURATION
+    update_timer
+
+    if timer_seconds == 0 then jump time_out
+
+    handle_player_move
+  jump game_loop
+
+  : time_out
+  draw_player
+  vf := key
+  draw_timer
+  jump restart
+
+: draw_play_field
+  plane 2
+  i := fill
+  v0 := 64 # fill from the bottom of the screen
+  loop
+    v0 -= 16
+    v1 := 128 # fill from the right side of the screen
+    loop
+      v1 -= 16
+      sprite v1 v0 0
+    if v1 != 0 then again
+  if v0 != 0 then again
+
+  v1 := 0
+  plane 1
+  i := wave1
+  loop
+    sprite v1 v0 0
+    v1 += 24
+  if v1 != 120 then again
+
+  i := wave3
+  sprite v1 v0 7
+
+  i := wave2
+  v1 := 12
+  loop
+    sprite v1 v0 0
+    v1 += 24
+  if v1 != 132 then again
+
+  wave_counter := 2
+  plane 3
+  i := hook
+  v1 := 60
+  sprite v1 wave_counter 12
+return
+
+: spawn_player
+  # spawn the player somewhere in the range {[28, 92), [20, 52)}
+  player_x := random 0b111111
+  player_x += 28
+  player_y := random 0b11111
+  player_y += 20
+
+  player_facing := random 0b1
+  draw_player
+return
+
+: reset_timer
+  timer_ticks := 0
+  timer_seconds := 30
+  i := timer_digits
+  bcd timer_seconds
+  draw_timer
+return
+
+: draw_player
+  plane 3
+  i := fish_left
+  if player_facing == 1 then i := fish_right
+  sprite player_x player_y 4
+return
+
+: update_timer
+  timer_ticks += v0
+  if timer_ticks >= 60 begin
+    timer_ticks -= 60
+    timer_seconds -= 1
+
+    draw_timer
+    i := timer_digits
+    bcd timer_seconds
+    draw_timer
+  end
+return
+
+: draw_timer
+  plane 2
+  i := timer_digits
+  load v2
+  i := hex v1
+  v0 := TIMER_POSITION
+  v1 := 0
+  sprite v0 v1 5
+  i := hex v2
+  v0 += 4
+  sprite v0 v1 5
+return
+
+: handle_player_move
+  v0 := 0 # delta_x
+  v1 := 0 # delta_y
+  vf := OCTO_KEY_W
+  if vf key then v1 -= 1
+  vf := OCTO_KEY_S
+  if vf key then v1 += 1
+  vf := OCTO_KEY_A
+  if vf key then v0 -= 1
+  vf := OCTO_KEY_D
+  if vf key then v0 += 1
+
+  vf := v0
+  vf |= v1
+
+  if vf == 0 then return # not moving, no need to redraw
+
+  # else player is moving
+
+  if v0 == 1 begin
+    if player_x == PLAYFIELD_X_MAX then v0 := 0
+  end
+
+  if v0 == -1 begin
+    if player_x == PLAYFIELD_X_MIN then v0 := 0
+  end
+
+  if v1 == 1 begin
+    if player_y == PLAYFIELD_Y_MAX then v1 := 0
+  end
+
+  if v1 == -1 begin
+    if player_y == PLAYFIELD_Y_MIN then v1 := 0
+  end
+
+  draw_player # clear the sprite before updating the position
+
+  if v0 != 0 then player_facing := v0
+
+  player_x += v0
+  player_y += v1
+  draw_player
+return
+
+: fish_right
+0x00 0x08 0x00 0x00
+0xB8 0xF4 0xFC 0xB8
+
+: fish_left
+0x00 0x40 0x00 0x00
+0x74 0xBC 0xFC 0x74
+
+: hook
+0x04 0x04 0x08 0x08 0x00 0x00 0x3C 0x18
+0x00 0x00 0x00 0x00
+0x04 0x04 0x08 0x08 0x18 0x3C 0x00 0x00
+0x10 0x20 0x24 0x18
+
+: fill
+0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
+0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
+0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
+0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0xFF
+: wave1
+0xFF 0xF0 0xFF 0xF0 0xFF 0xF0 0xFF 0xF0
+0xFF 0xF0 0xFF 0xF0 0x81 0xF0 0x00 0x00
+0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+: wave2
+0xFF 0xF0 0xFF 0xF0 0xFF 0xF0 0xFF 0xF0
+0xFF 0xF0 0xFF 0xF0 0xFF 0xF0 0x7E 0x00
+0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+: wave3
+0xFF 0xFF 0xFF 0xFF 0xFF 0xFF 0x81
+
+: timer_digits
+0x00 0x00 0x00
