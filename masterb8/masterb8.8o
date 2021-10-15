@@ -33,16 +33,16 @@
   
 #: draw_play_field
   plane 3
-	i := seaweed # unrolling the seaweed from the loop to minise instructions executed while drawing the playfield, this has a visible impact on slow emulator speeds.
+  i := seaweed # unrolling the seaweed from the loop to minise instructions executed while drawing the playfield, this has a visible impact on slow emulator speeds.
   v0 := 48 # fill from the bottom of the screen
-	v1 := 128 # fill from the right side of the screen (this gives a more pleasing fill imo)
-	loop
-	  v1 -= 16
-	  sprite v1 v0 0
-	if v1 != 0 then again
-	
-	plane 2
-	i := fill
+  v1 := 128 # fill from the right side of the screen (this gives a more pleasing fill imo)
+  loop
+    v1 -= 16
+    sprite v1 v0 0
+  if v1 != 0 then again
+
+  plane 2
+  i := fill
   loop
     v0 -= 16
     v1 := 128
@@ -71,6 +71,7 @@
   if v1 != 132 then again
 
   wave_counter := 2
+  draw_hook
 #return
 
 : restart
@@ -95,15 +96,15 @@
 
 
 : game_loop
-	vf := delay
-	if vf != 0 then jump game_loop
-	vf := TICK_DURATION
-	delay := vf
+  vf := delay
+  if vf != 0 then jump game_loop
+  vf := TICK_DURATION
+  delay := vf
 
-	v0 := TICK_DURATION
-	update_timer
+  v0 := TICK_DURATION
+  update_timer
 
-	if timer_seconds == 0 then jump time_out
+  if timer_seconds == 0 then jump time_out
 
 #: handle_input
   v0 := 0 # delta_x
@@ -123,37 +124,37 @@
   vf |= v1
 
   if vf != 0 begin # player is moving
-		if v0 == 1 begin
-			if player_x == PLAYFIELD_X_MAX then v0 := 0
-		end
+    if v0 == 1 begin
+      if player_x == PLAYFIELD_X_MAX then v0 := 0
+    end
 
-		if v0 == -1 begin
-			if player_x == PLAYFIELD_X_MIN then v0 := 0
-		end
+    if v0 == -1 begin
+      if player_x == PLAYFIELD_X_MIN then v0 := 0
+    end
 
-		if v1 == 1 begin
-			if player_y == PLAYFIELD_Y_MAX then v1 := 0
-		end
+    if v1 == 1 begin
+      if player_y == PLAYFIELD_Y_MAX then v1 := 0
+    end
 
-		if v1 == -1 begin
-			if player_y == PLAYFIELD_Y_MIN then v1 := 0
-		end
+    if v1 == -1 begin
+      if player_y == PLAYFIELD_Y_MIN then v1 := 0
+    end
 
-		draw_player # clear the sprite before updating the position
+    draw_player # clear the sprite before updating the position
 
-		if v0 != 0 then player_facing := v0
+    if v0 != 0 then player_facing := v0
 
-		player_x += v0
-		player_y += v1
-		draw_player
-	end
+    player_x += v0
+    player_y += v1
+    draw_player
+  end
 #return
 
 #: update_world
   #if toggle_hook then draw_hook
 #return
 
-	#if player_dead == 1 then jump dead_dead
+  #if player_dead == 1 then jump dead_dead
 jump game_loop
 
 ##############
@@ -164,12 +165,12 @@ jump game_loop
   vf := key #leave the time visible to give the player feedback why the game ended
   draw_timer
   jump restart
-	
+
 : dead_dead
-	draw_player
-	draw_timer
-	vf := key #hide the timer, not relevant in this death state
-	jump restart
+  draw_player
+  draw_timer
+  vf := key #hide the timer, not relevant in this death state
+  jump restart
 
 ############
 # Routines #
